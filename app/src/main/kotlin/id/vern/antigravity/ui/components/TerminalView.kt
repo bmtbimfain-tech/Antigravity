@@ -1,8 +1,5 @@
 package id.vern.antigravity.ui.components
 
-import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,9 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.Icon
@@ -37,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,11 +49,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.vern.antigravity.R
@@ -85,8 +84,33 @@ fun TerminalView(
     var commandInput by TerminalSessionManager.commandInput
     var isRunning by TerminalSessionManager.isRunning
 
-    val listState = rememberLazyListState()
+    val verticalScrollState = rememberScrollState()
     val focusRequester = remember { FocusRequester() }
+
+    val renderedOutput by remember {
+        derivedStateOf {
+            val displayLines = if (lines.size > 1500) lines.takeLast(1500) else lines.toList()
+            buildAnnotatedString {
+                displayLines.forEachIndexed { index, line ->
+                    val isErr = line.isError ||
+                        line.text.contains("error:", ignoreCase = true) ||
+                        line.text.contains("failed", ignoreCase = true) ||
+                        line.text.contains("fatal:", ignoreCase = true)
+                    val color = when {
+                        line.isCommand -> Color(0xFF38BDF8)
+                        isErr -> AntigravityRed
+                        else -> Color(0xFFE2E8F0)
+                    }
+                    withStyle(SpanStyle(color = color)) {
+                        append(line.text)
+                    }
+                    if (index < displayLines.lastIndex) {
+                        append("\n")
+                    }
+                }
+            }
+        }
+    }
 
     fun safeRequestFocus(showKeyboard: Boolean = true) {
         try {
@@ -97,9 +121,9 @@ fun TerminalView(
         } catch (e: Exception) {}
     }
 
-    LaunchedEffect(lines.size) {
+    LaunchedEffect(lines.size, renderedOutput.length) {
         if (lines.isNotEmpty()) {
-            listState.scrollToItem(lines.size - 1)
+            verticalScrollState.scrollTo(verticalScrollState.maxValue)
         }
     }
 
@@ -133,7 +157,9 @@ fun TerminalView(
         }
 
         lines.add(TerminalLine(text = "$ $trimmed", isCommand = true))
-        TerminalSessionManager.sessionBuffers[TerminalSessionManager.currentSessionName.value]?.add(TerminalLine(text = "$ $trimmed", isCommand = true))
+        TerminalSessionManager.sessionBuffers[TerminalSessionManager.currentSessionName.value]?.add(
+            TerminalLine(text = "$ $trimmed", isCommand = true)
+        )
         history.add(trimmed)
         historyIndex = history.size
         commandInput = ""
@@ -141,7 +167,7 @@ fun TerminalView(
         safeRequestFocus()
 
         coroutineScope.launch {
-            val exitCode = EngineExecutor.executeCommandWithUpdates(context, trimmed, TerminalSessionManager.currentWorkingDir) { line, isErr, isUpdate ->
+            EngineExecutor.executeCommandWithUpdates(context, trimmed, TerminalSessionManager.currentWorkingDir) { line, isErr, isUpdate ->
                 TerminalSessionManager.appendLine(line, isErr, isUpdate)
             }
             withContext(Dispatchers.Main) {
@@ -204,80 +230,66 @@ fun TerminalView(
             }
         }
 
-        SelectionContainer(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .verticalScroll(verticalScrollState)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    safeRequestFocus()
+                }
+                .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        safeRequestFocus()
-                    }
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
-            ) {
-                items(lines, key = { it.id }) { line ->
-                    val isErr = line.isError || line.text.contains("error:", ignoreCase = true) || line.text.contains("failed", ignoreCase = true) || line.text.contains("fatal:", ignoreCase = true)
-                    val color = when {
-                        line.isCommand -> Color(0xFF38BDF8)
-                        isErr -> AntigravityRed
-                        else -> Color(0xFFE2E8F0)
-                    }
+            if (renderedOutput.isNotEmpty()) {
+                SelectionContainer {
                     Text(
-                        text = line.text,
+                        text = renderedOutput,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.5.sp,
-                        color = color,
-                        lineHeight = 16.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 1.dp)
+                        lineHeight = 17.sp,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
+            }
 
-                item {
-                    DisableSelection {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 4.dp, bottom = 8.dp)
-                        ) {
-                            val isAgySession = TerminalSessionManager.currentSessionName.value == TerminalSessionManager.AGY_SESSION_NAME
-                            Text(
-                                text = if (isAgySession) "> " else "$ ",
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                color = if (isAgySession) Color(0xFF38BDF8) else AntigravityGreen
-                            )
-                            BasicTextField(
-                                value = commandInput,
-                                onValueChange = { commandInput = it },
-                                textStyle = TextStyle(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFF8FAFC)
-                                ),
-                                cursorBrush = SolidColor(if (isAgySession) Color(0xFF38BDF8) else AntigravityGreen),
-                                visualTransformation = VisualTransformation.None,
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send, autoCorrectEnabled = false),
-                                keyboardActions = KeyboardActions(onSend = {
-                                    executeTerminalCommand(commandInput)
-                                    safeRequestFocus()
-                                }),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .focusRequester(focusRequester)
-                            )
-                        }
-                    }
+            DisableSelection {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 8.dp)
+                ) {
+                    val isAgySession = TerminalSessionManager.currentSessionName.value == TerminalSessionManager.AGY_SESSION_NAME
+                    Text(
+                        text = if (isAgySession) "> " else "$ ",
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = if (isAgySession) Color(0xFF38BDF8) else AntigravityGreen
+                    )
+                    BasicTextField(
+                        value = commandInput,
+                        onValueChange = { commandInput = it },
+                        textStyle = TextStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = Color(0xFFF8FAFC)
+                        ),
+                        cursorBrush = SolidColor(if (isAgySession) Color(0xFF38BDF8) else AntigravityGreen),
+                        visualTransformation = VisualTransformation.None,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send, autoCorrectEnabled = false),
+                        keyboardActions = KeyboardActions(onSend = {
+                            executeTerminalCommand(commandInput)
+                            safeRequestFocus()
+                        }),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester)
+                    )
                 }
             }
         }
