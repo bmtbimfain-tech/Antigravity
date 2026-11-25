@@ -1,9 +1,19 @@
-name: Android Release Build
+name: Android Cloud Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, fix/security-hardening ]
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Tipe APK (debug = tanpa keystore, release = butuh secrets keystore)'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+          - both
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -13,8 +23,8 @@ permissions:
   contents: read
 
 jobs:
-  build-release:
-    name: Compile Release APK
+  build-apk:
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -32,22 +42,55 @@ jobs:
         run: chmod +x gradlew
 
       - name: Setup Signing Keystore
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > app/KuatoDev.jks
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > release-keystore.jks
+            echo "HAS_KEYSTORE=true" >> "$GITHUB_ENV"
+            echo "Release keystore ready."
+          else
+            echo "HAS_KEYSTORE=false" >> "$GITHUB_ENV"
+            echo "KEYSTORE_BASE64 secret is empty. Release signing disabled."
+          fi
+
+      - name: Validate Release Secrets (Manual Release Trigger)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_type == 'release' && env.HAS_KEYSTORE != 'true' }}
+        run: |
+          echo "::error::Build release membutuhkan secret KEYSTORE_BASE64, SIGNING_STORE_PASSWORD, SIGNING_KEY_ALIAS, dan SIGNING_KEY_PASSWORD."
+          exit 1
+
+      - name: Compile Debug APK
+        if: ${{ inputs.build_type == 'debug' || inputs.build_type == 'both' || (github.event_name == 'push' && env.HAS_KEYSTORE != 'true') }}
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Compile Release APK
+        if: ${{ (inputs.build_type == 'release' || inputs.build_type == 'both' || github.event_name == 'push') && env.HAS_KEYSTORE == 'true' }}
         env:
+          SIGNING_STORE_FILE: release-keystore.jks
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Cleanup Keystore
+        if: always()
+        run: rm -f release-keystore.jks
+
+      - name: Upload Debug APK Artifact
+        if: ${{ inputs.build_type == 'debug' || inputs.build_type == 'both' || (github.event_name == 'push' && env.HAS_KEYSTORE != 'true') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Antigravity-Debug-APK
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Release APK Artifact
+        if: ${{ (inputs.build_type == 'release' || inputs.build_type == 'both' || github.event_name == 'push') && env.HAS_KEYSTORE == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: Antigravity-Release-APK
           path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
           retention-days: 14
