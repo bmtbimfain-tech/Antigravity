@@ -603,18 +603,43 @@ migrations:  {
         return Pair(url, verifier)
     }
 
-    fun buildAuthUrl(redirectUri: String): String {
+    private fun generatePkcePair(): Pair<String, String> {
+        val bytes = ByteArray(32)
+        SecureRandom().nextBytes(bytes)
+        val verifier = Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP).trim()
+        val md = MessageDigest.getInstance("SHA-256")
+        val digest = md.digest(verifier.toByteArray(Charsets.US_ASCII))
+        val challenge = Base64.encodeToString(digest, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP).trim()
+        return Pair(verifier, challenge)
+    }
+
+    private fun generateStateToken(): String {
+        val bytes = ByteArray(24)
+        SecureRandom().nextBytes(bytes)
+        return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP).trim()
+    }
+
+    fun buildAuthUrl(redirectUri: String, codeChallenge: String? = null, state: String? = null): String {
         val encodedRedirect = URLEncoder.encode(redirectUri, "UTF-8")
         val encodedScopes = URLEncoder.encode(SCOPES, "UTF-8")
         val encodedClientId = URLEncoder.encode(CLIENT_ID, "UTF-8")
 
-        return "https://accounts.google.com/o/oauth2/v2/auth" +
-                "?client_id=$encodedClientId" +
-                "&redirect_uri=$encodedRedirect" +
-                "&response_type=code" +
-                "&scope=$encodedScopes" +
-                "&access_type=offline" +
-                "&prompt=consent"
+        val sb = StringBuilder()
+        sb.append("https://accounts.google.com/o/oauth2/v2/auth")
+        sb.append("?access_type=offline")
+        sb.append("&client_id=$encodedClientId")
+        if (!codeChallenge.isNullOrBlank()) {
+            sb.append("&code_challenge=${URLEncoder.encode(codeChallenge, "UTF-8")}")
+            sb.append("&code_challenge_method=S256")
+        }
+        sb.append("&prompt=consent")
+        sb.append("&redirect_uri=$encodedRedirect")
+        sb.append("&response_type=code")
+        if (!state.isNullOrBlank()) {
+            sb.append("&state=${URLEncoder.encode(state, "UTF-8")}")
+        }
+        sb.append("&scope=$encodedScopes")
+        return sb.toString()
     }
 
     @Volatile
@@ -781,12 +806,15 @@ migrations:  {
         try {
             serverSocket = ServerSocket().apply {
                 reuseAddress = true
-                bind(java.net.InetSocketAddress("0.0.0.0", CALLBACK_PORT))
+                bind(java.net.InetSocketAddress("127.0.0.1", CALLBACK_PORT))
             }
             activeServerSocket = serverSocket
 
+            val (pkceVerifier, pkceChallenge) = generatePkcePair()
+            currentCodeVerifier = pkceVerifier
+            val expectedState = generateStateToken()
             val redirectUri = "http://127.0.0.1:$CALLBACK_PORT/oauth/callback"
-            val authUrl = buildAuthUrl(redirectUri)
+            val authUrl = buildAuthUrl(redirectUri, codeChallenge = pkceChallenge, state = expectedState)
 
             withContext(Dispatchers.Main) {
                 try {
@@ -811,8 +839,18 @@ migrations:  {
                 }
                 val reader = BufferedReader(InputStreamReader(sock.getInputStream(), StandardCharsets.UTF_8))
                 val reqLine = reader.readLine() ?: ""
-                val extracted = extractCodeFromRequest(reqLine)
-                if (extracted != null) {
+                val queryPart = reqLine.substringAfter("?", "").substringBefore(" ")
+                val queryParams = if (queryPart.isNotEmpty()) {
+                    queryPart.split("&").associate { pair ->
+                        val kv = pair.split("=", limit = 2)
+                        val k = try { java.net.URLDecoder.decode(kv[0], "UTF-8") } catch (_: Exception) { kv[0] }
+                        val v = if (kv.size == 2) try { java.net.URLDecoder.decode(kv[1], "UTF-8") } catch (_: Exception) { kv[1] } else ""
+                        k to v
+                    }
+                } else emptyMap()
+                val extracted = queryParams["code"]?.takeIf { it.isNotBlank() }
+                val returnedState = queryParams["state"]
+                if (extracted != null && returnedState == expectedState) {
                     code = extracted
                     clientSocket = sock
                 } else {
@@ -844,7 +882,7 @@ migrations:  {
                     context = context,
                     code = code,
                     redirectUri = redirectUri,
-                    codeVerifier = null,
+                    codeVerifier = pkceVerifier,
                     onSuccess = { email ->
                         userEmail = email
                     },

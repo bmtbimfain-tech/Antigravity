@@ -57,15 +57,20 @@ android {
         }
     }
 
-    val keystorePath = localProperties.getProperty("signing.storeFile")
+    val releaseStorePath = localProperties.getProperty("signing.storeFile")
         ?: (project.findProperty("storeFile") as String?)
-        ?: "KuatoDev.jks"
-    val resolvedKeystore = file(keystorePath)
+        ?: System.getenv("SIGNING_STORE_FILE")
+        ?: "release-keystore.jks"
+    val resolvedReleaseKeystore = rootProject.file(releaseStorePath)
 
     signingConfigs {
         create("release") {
-            if (resolvedKeystore.exists()) {
-                storeFile = resolvedKeystore
+            val storeFilePath = localProperties.getProperty("signing.storeFile")
+                ?: (project.findProperty("storeFile") as String?)
+                ?: System.getenv("SIGNING_STORE_FILE")
+            val candidateFile = if (!storeFilePath.isNullOrBlank()) rootProject.file(storeFilePath) else resolvedReleaseKeystore
+            if (candidateFile.exists()) {
+                storeFile = candidateFile
                 storePassword = localProperties.getProperty("signing.storePassword")
                     ?: (project.findProperty("storePassword") as String?)
                     ?: System.getenv("SIGNING_STORE_PASSWORD")
@@ -98,10 +103,7 @@ android {
         debug {
             isMinifyEnabled = false
             isShrinkResources = false
-            val releaseSigning = signingConfigs.getByName("release")
-            if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
-                signingConfig = releaseSigning
-            }
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

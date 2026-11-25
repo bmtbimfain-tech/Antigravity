@@ -30,10 +30,8 @@ fetch() {
         sz_str=" [$(human_size "$size")]"
     fi
     local cert_args=()
-    if [ -r "$PKG_CERT" ]; then
+    if [ -n "${PKG_CERT:-}" ] && [ -r "$PKG_CERT" ]; then
         cert_args=("--cacert" "$PKG_CERT")
-    else
-        cert_args=("-k")
     fi
     curl -# -fL --retry 3 --connect-timeout 20 "${cert_args[@]}" -o "$out.part" "$url" \
         || { rm -f "$out.part"; die "download failed: $url"; }

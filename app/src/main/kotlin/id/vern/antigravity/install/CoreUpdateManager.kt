@@ -11,6 +11,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
 import org.json.JSONObject
 
@@ -119,6 +120,10 @@ object CoreUpdateManager {
 
         try {
 
+            if (!updateInfo.url.startsWith("https://", ignoreCase = true)) {
+                return Result.failure(Exception("Refusing non-HTTPS core update URL: ${updateInfo.url}"))
+            }
+
             val maxAttempts = 5
             var attempt = 0
             var downloadSucceeded = false
@@ -161,6 +166,24 @@ object CoreUpdateManager {
 
             if (!downloadSucceeded) {
                 throw IllegalStateException("Failed downloading core engine after $maxAttempts attempts: ${lastDownloadError?.message}", lastDownloadError)
+            }
+
+            onProgress(0.68f, "Verifying archive SHA-512 checksum...")
+            val expectedSha512 = updateInfo.sha512.trim()
+            if (expectedSha512.isNotEmpty()) {
+                val digest = MessageDigest.getInstance("SHA-512")
+                tarGzFile.inputStream().use { input ->
+                    val hashBuf = ByteArray(65536)
+                    var n: Int
+                    while (input.read(hashBuf).also { n = it } != -1) {
+                        digest.update(hashBuf, 0, n)
+                    }
+                }
+                val actualSha512 = digest.digest().joinToString("") { "%02x".format(it) }
+                if (!actualSha512.equals(expectedSha512, ignoreCase = true)) {
+                    try { tarGzFile.delete() } catch (_: Exception) {}
+                    return Result.failure(Exception("Core engine SHA-512 mismatch: got $actualSha512, expected $expectedSha512"))
+                }
             }
 
             onProgress(0.70f, "Extracting binary package...")
