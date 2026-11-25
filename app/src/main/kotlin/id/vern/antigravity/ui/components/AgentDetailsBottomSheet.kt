@@ -1219,9 +1219,11 @@ fun AgentDetailsBottomSheet(
                                         shape = RoundedCornerShape(16.dp),
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                                     ) {
+                                        val bionicCount = TerminalSessionManager.sessionNames.count { it != TerminalSessionManager.AGY_SESSION_NAME }
                                         TerminalSessionManager.sessionNames.forEach { sName ->
                                             val isAgy = sName == TerminalSessionManager.AGY_SESSION_NAME
                                             val isSelected = sName == TerminalSessionManager.currentSessionName.value
+                                            val canClose = !isAgy && bionicCount > 1
                                             DropdownMenuItem(
                                                 text = {
                                                     Text(
@@ -1247,6 +1249,23 @@ fun AgentDetailsBottomSheet(
                                                         )
                                                     }
                                                 },
+                                                trailingIcon = if (canClose) {
+                                                    {
+                                                        IconButton(
+                                                            onClick = {
+                                                                TerminalSessionManager.closeSession(sName)
+                                                            },
+                                                            modifier = Modifier.size(24.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Clear,
+                                                                contentDescription = "Close session",
+                                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                } else null,
                                                 onClick = {
                                                     TerminalSessionManager.switchSession(sName)
                                                     showTerminalSessionsMenu = false
@@ -1315,6 +1334,18 @@ fun AgentDetailsBottomSheet(
                                                 showTerminalMoreMenu = false
                                             }
                                         )
+                                        if (currentSession != TerminalSessionManager.AGY_SESSION_NAME &&
+                                            TerminalSessionManager.sessionNames.count { it != TerminalSessionManager.AGY_SESSION_NAME } > 1
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("Close Session", fontSize = 13.sp, color = MaterialTheme.colorScheme.error) },
+                                                leadingIcon = { Icon(Icons.Default.Clear, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) },
+                                                onClick = {
+                                                    TerminalSessionManager.closeSession(currentSession)
+                                                    showTerminalMoreMenu = false
+                                                }
+                                            )
+                                        }
                                         if (projName.isNotBlank()) {
                                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
                                             DropdownMenuItem(

@@ -254,6 +254,34 @@ object TerminalSessionManager {
         }
     }
 
+    fun closeSession(name: String = currentSessionName.value) {
+        if (name == AGY_SESSION_NAME) return
+        val bionicSessions = sessionNames.filter { it != AGY_SESSION_NAME }
+        if (bionicSessions.size <= 1) {
+            killCurrentProcess()
+            clear()
+            val resetMsg = TerminalLine(text = "[Session reset]", isCommand = true)
+            lines.add(resetMsg)
+            sessionBuffers.getOrPut(name) { mutableListOf() }.add(resetMsg)
+            return
+        }
+
+        if (currentSessionName.value == name) {
+            killCurrentProcess()
+        }
+        sessionBuffers.remove(name)
+        sessionNames.remove(name)
+
+        if (currentSessionName.value == name) {
+            val fallback = sessionNames.lastOrNull { it != AGY_SESSION_NAME }
+                ?: sessionNames.firstOrNull()
+                ?: "Session 1 (Bionic Shell)"
+            currentSessionName.value = fallback
+            lines.clear()
+            lines.addAll(sessionBuffers.getOrPut(fallback) { mutableListOf() })
+        }
+    }
+
     fun restartShell() {
         killCurrentProcess()
         clear()

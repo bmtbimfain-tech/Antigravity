@@ -156,6 +156,13 @@ fun TerminalView(
             return
         }
 
+        if (trimmed.equals("exit", ignoreCase = true) || trimmed.equals("logout", ignoreCase = true)) {
+            commandInput = ""
+            TerminalSessionManager.closeSession(TerminalSessionManager.currentSessionName.value)
+            safeRequestFocus()
+            return
+        }
+
         lines.add(TerminalLine(text = "$ $trimmed", isCommand = true))
         TerminalSessionManager.sessionBuffers[TerminalSessionManager.currentSessionName.value]?.add(
             TerminalLine(text = "$ $trimmed", isCommand = true)
