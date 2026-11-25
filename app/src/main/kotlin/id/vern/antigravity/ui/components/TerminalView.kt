@@ -1,21 +1,13 @@
 package id.vern.antigravity.ui.components
 
 import android.content.Context
-import java.io.File
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.keyframes
-import androidx.compose.animation.core.rememberInfiniteTransition
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import id.vern.antigravity.R
-import id.vern.antigravity.ui.theme.AntigravityGreen
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,18 +22,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,37 +38,37 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.OffsetMapping
-import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.os.Handler
-import android.os.Looper
+import id.vern.antigravity.R
 import id.vern.antigravity.executor.EngineExecutor
-import id.vern.antigravity.ui.theme.AntigravityRed
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import id.vern.antigravity.service.TerminalLine
 import id.vern.antigravity.service.TerminalSessionManager
+import id.vern.antigravity.ui.theme.AntigravityGreen
+import id.vern.antigravity.ui.theme.AntigravityRed
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun TerminalView(
@@ -88,6 +76,7 @@ fun TerminalView(
     showHeader: Boolean = true
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
     val lines = TerminalSessionManager.lines
@@ -172,114 +161,123 @@ fun TerminalView(
                 color = Color(0xFF131924),
                 modifier = Modifier.fillMaxWidth()
             ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val isAgyActive = TerminalSessionManager.currentSessionName.value == TerminalSessionManager.AGY_SESSION_NAME && EngineExecutor.isAgyRunning()
-                val isSessionBusy = isRunning || isAgyActive
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(if (isSessionBusy) AntigravityGreen else Color(0xFF64748B))
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(if (isSessionBusy) R.string.terminal_status_busy else R.string.terminal_status_ready),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFE2E8F0)
-                    )
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(
-                        onClick = { TerminalSessionManager.clear() },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Clear,
-                            contentDescription = stringResource(R.string.terminal_action_clear),
-                            tint = Color(0xFF94A3B8),
-                            modifier = Modifier.size(16.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val isAgyActive = TerminalSessionManager.currentSessionName.value == TerminalSessionManager.AGY_SESSION_NAME && EngineExecutor.isAgyRunning()
+                    val isSessionBusy = isRunning || isAgyActive
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (isSessionBusy) AntigravityGreen else Color(0xFF64748B))
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(if (isSessionBusy) R.string.terminal_status_busy else R.string.terminal_status_ready),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFE2E8F0)
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        IconButton(
+                            onClick = { TerminalSessionManager.clear() },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = stringResource(R.string.terminal_action_clear),
+                                tint = Color(0xFF94A3B8),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
         }
-    }
 
-        LazyColumn(
-            state = listState,
+        SelectionContainer(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {
-                    safeRequestFocus()
-                }
-                .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-            items(lines, key = { it.id }) { line ->
-                val isErr = line.isError || line.text.contains("error:", ignoreCase = true) || line.text.contains("failed", ignoreCase = true) || line.text.contains("fatal:", ignoreCase = true)
-                val color = when {
-                    line.isCommand -> Color(0xFF38BDF8)
-                    isErr -> AntigravityRed
-                    else -> Color(0xFFE2E8F0)
-                }
-                Text(
-                    text = line.text,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.5.sp,
-                    color = color,
-                    lineHeight = 16.sp,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)
-                )
-            }
-
-            item {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 8.dp)
-                ) {
-                    val isAgySession = TerminalSessionManager.currentSessionName.value == TerminalSessionManager.AGY_SESSION_NAME
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        safeRequestFocus()
+                    }
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            ) {
+                items(lines, key = { it.id }) { line ->
+                    val isErr = line.isError || line.text.contains("error:", ignoreCase = true) || line.text.contains("failed", ignoreCase = true) || line.text.contains("fatal:", ignoreCase = true)
+                    val color = when {
+                        line.isCommand -> Color(0xFF38BDF8)
+                        isErr -> AntigravityRed
+                        else -> Color(0xFFE2E8F0)
+                    }
                     Text(
-                        text = if (isAgySession) "> " else "$ ",
+                        text = line.text,
                         fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        color = if (isAgySession) Color(0xFF38BDF8) else AntigravityGreen
-                    )
-                    BasicTextField(
-                        value = commandInput,
-                        onValueChange = { commandInput = it },
-                        textStyle = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            color = Color(0xFFF8FAFC)
-                        ),
-                        cursorBrush = SolidColor(if (isAgySession) Color(0xFF38BDF8) else AntigravityGreen),
-                        visualTransformation = VisualTransformation.None,
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send, autoCorrectEnabled = false),
-                        keyboardActions = KeyboardActions(onSend = {
-                            executeTerminalCommand(commandInput)
-                            safeRequestFocus()
-                        }),
+                        fontSize = 11.5.sp,
+                        color = color,
+                        lineHeight = 16.sp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .focusRequester(focusRequester)
+                            .padding(vertical = 1.dp)
                     )
+                }
+
+                item {
+                    DisableSelection {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp, bottom = 8.dp)
+                        ) {
+                            val isAgySession = TerminalSessionManager.currentSessionName.value == TerminalSessionManager.AGY_SESSION_NAME
+                            Text(
+                                text = if (isAgySession) "> " else "$ ",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = if (isAgySession) Color(0xFF38BDF8) else AntigravityGreen
+                            )
+                            BasicTextField(
+                                value = commandInput,
+                                onValueChange = { commandInput = it },
+                                textStyle = TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFF8FAFC)
+                                ),
+                                cursorBrush = SolidColor(if (isAgySession) Color(0xFF38BDF8) else AntigravityGreen),
+                                visualTransformation = VisualTransformation.None,
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send, autoCorrectEnabled = false),
+                                keyboardActions = KeyboardActions(onSend = {
+                                    executeTerminalCommand(commandInput)
+                                    safeRequestFocus()
+                                }),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(focusRequester)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -308,6 +306,47 @@ fun TerminalView(
                         text = "Ctrl+C",
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = Color(0xFFCBD5E1),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Color(0xFF1E293B),
+                    modifier = Modifier.clickable {
+                        val clipText = clipboardManager.getText()?.text
+                        if (!clipText.isNullOrEmpty()) {
+                            commandInput += clipText
+                        }
+                        safeRequestFocus()
+                    }
+                ) {
+                    Text(
+                        text = "Paste",
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = AntigravityGreen,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Color(0xFF1E293B),
+                    modifier = Modifier.clickable {
+                        val allText = lines.joinToString("\n") { it.text }
+                        if (allText.isNotEmpty()) {
+                            clipboardManager.setText(AnnotatedString(allText))
+                            Toast.makeText(context, "Semua teks terminal disalin", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text(
+                        text = "Copy All",
+                        fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
                         color = Color(0xFFCBD5E1),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
@@ -420,4 +459,3 @@ fun TerminalView(
         }
     }
 }
-
