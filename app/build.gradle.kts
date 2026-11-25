@@ -22,7 +22,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "id.vern.antigravity"
+        applicationId = "id.vern.antigravity.hardened"
         minSdk = 26
         targetSdk = 28
         versionCode = 2
