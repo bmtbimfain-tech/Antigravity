@@ -608,13 +608,19 @@ object BootstrapInstaller {
 
     fun patchGlibcResolvConf(context: Context, engineDir: File) {
         val filesDir = context.filesDir
+        val dataDir = filesDir.parentFile ?: filesDir
+        val shortBaseDir = dataDir.absolutePath.replaceFirst("/data/user/0/", "/data/data/")
         val resolvFile = File(filesDir, "resolv.conf")
+        val shortResolvFile = File(dataDir, "resolv.conf")
         val resolvContent = "nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 8.8.4.4\n"
         val hostsFile = File(filesDir, "hosts")
+        val shortHostsFile = File(dataDir, "hosts")
         val hostsContent = "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n"
         try {
             resolvFile.writeText(resolvContent, Charsets.UTF_8)
             resolvFile.setReadable(true, false)
+            shortResolvFile.writeText(resolvContent, Charsets.UTF_8)
+            shortResolvFile.setReadable(true, false)
             File(File(filesDir, "home"), "resolv.conf").apply {
                 parentFile?.mkdirs()
                 writeText(resolvContent, Charsets.UTF_8)
@@ -628,6 +634,8 @@ object BootstrapInstaller {
 
             hostsFile.writeText(hostsContent, Charsets.UTF_8)
             hostsFile.setReadable(true, false)
+            shortHostsFile.writeText(hostsContent, Charsets.UTF_8)
+            shortHostsFile.setReadable(true, false)
             File(File(filesDir, "home"), "hosts").apply {
                 parentFile?.mkdirs()
                 writeText(hostsContent, Charsets.UTF_8)
@@ -669,25 +677,27 @@ object BootstrapInstaller {
             try {
                 var modified = false
 
+                val shortResolvPath = "$shortBaseDir/resolv.conf"
                 val targetResolv = "/data/data/com.termux/files/usr/glibc/etc/resolv.conf".toByteArray(Charsets.US_ASCII)
-                val replacementResolv = resolvFile.absolutePath.toByteArray(Charsets.US_ASCII)
+                val replacementResolv = shortResolvPath.toByteArray(Charsets.US_ASCII)
                 if (replacementResolv.size <= targetResolv.size) {
                     val repBytes = ByteArray(targetResolv.size)
                     System.arraycopy(replacementResolv, 0, repBytes, 0, replacementResolv.size)
                     if (patchFileInPlace(libcFile, targetResolv, repBytes, replaceAll = false)) {
                         modified = true
-                        Log.i(TAG, "Successfully patched ${libcFile.name} resolv.conf path to ${resolvFile.absolutePath}")
+                        Log.i(TAG, "Successfully patched ${libcFile.name} resolv.conf path to $shortResolvPath")
                     }
                 }
 
+                val shortHostsPath = "$shortBaseDir/hosts"
                 val targetHosts = "/data/data/com.termux/files/usr/glibc/etc/hosts\u0000".toByteArray(Charsets.US_ASCII)
-                val replacementHosts = hostsFile.absolutePath.toByteArray(Charsets.US_ASCII)
+                val replacementHosts = shortHostsPath.toByteArray(Charsets.US_ASCII)
                 if (replacementHosts.size + 1 <= targetHosts.size) {
                     val repBytes = ByteArray(targetHosts.size)
                     System.arraycopy(replacementHosts, 0, repBytes, 0, replacementHosts.size)
                     if (patchFileInPlace(libcFile, targetHosts, repBytes, replaceAll = false)) {
                         modified = true
-                        Log.i(TAG, "Successfully patched ${libcFile.name} hosts path to ${hostsFile.absolutePath}")
+                        Log.i(TAG, "Successfully patched ${libcFile.name} hosts path to $shortHostsPath")
                     }
                 }
 
