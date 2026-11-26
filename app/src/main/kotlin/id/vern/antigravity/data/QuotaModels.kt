@@ -12,7 +12,7 @@ data class QuotaBucket(
     val disabled: Boolean = false,
     val subtext: String? = null
 ) {
-    val percentage: Int get() = kotlin.math.round(remainingFraction * 100.0).toInt().coerceIn(0, 100)
+    val percentage: Int get() = kotlin.math.floor(remainingFraction * 100.0).toInt().coerceIn(0, 100)
 }
 
 enum class ModelAvailability {
@@ -29,7 +29,7 @@ data class AvailableModelInfo(
     val resetTime: String? = null,
     val availability: ModelAvailability = ModelAvailability.UNKNOWN
 ) {
-    val percentage: Int? get() = remainingFraction?.let { kotlin.math.round(it * 100.0).toInt().coerceIn(0, 100) }
+    val percentage: Int? get() = remainingFraction?.let { kotlin.math.floor(it * 100.0).toInt().coerceIn(0, 100) }
 
     fun matches(query: String): Boolean {
         return modelId.equals(query, ignoreCase = true) ||
