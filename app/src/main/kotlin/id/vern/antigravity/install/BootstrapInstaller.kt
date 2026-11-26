@@ -701,6 +701,17 @@ object BootstrapInstaller {
                     }
                 }
 
+                val etcHostsTarget = "/etc/hosts\u0000".toByteArray(Charsets.US_ASCII)
+                val etcHostsShort = "$shortBaseDir/hosts\u0000".toByteArray(Charsets.US_ASCII)
+                if (etcHostsShort.size <= etcHostsTarget.size) {
+                    val repEtcHosts = ByteArray(etcHostsTarget.size)
+                    System.arraycopy(etcHostsShort, 0, repEtcHosts, 0, etcHostsShort.size)
+                    if (patchFileInPlace(libcFile, etcHostsTarget, repEtcHosts, replaceAll = false)) {
+                        modified = true
+                        Log.i(TAG, "Successfully patched ${libcFile.name} /etc/hosts to $shortBaseDir/hosts")
+                    }
+                }
+
                 if (modified) {
                     libcFile.setReadable(true, false)
                     libcFile.setExecutable(true, false)

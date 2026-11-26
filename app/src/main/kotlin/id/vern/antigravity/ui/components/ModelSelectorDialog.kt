@@ -415,7 +415,8 @@ fun ModelSelectorDialog(
                                     }
                                 }
 
-                                if (model.effortCliIds.size >= 2 && isSelected) {
+                                val effortOptions = model.efforts.ifEmpty { ThinkingEfforts }
+                                if (isSelected && effortOptions.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(8.dp))
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
                                     Spacer(modifier = Modifier.height(8.dp))
@@ -430,7 +431,7 @@ fun ModelSelectorDialog(
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
-                                        model.efforts.forEach { effort ->
+                                        effortOptions.forEach { effort ->
                                             val isEffortSelected = selectedThinking.equals(effort, ignoreCase = true)
                                             FilterChip(
                                                 selected = isEffortSelected,
