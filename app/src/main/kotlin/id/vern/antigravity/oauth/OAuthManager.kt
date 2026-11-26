@@ -427,7 +427,11 @@ migrations:  {
                     }
                     if (changed) {
                         target.writeText(json.toString(2), Charsets.UTF_8)
-                        target.setReadable(true, false)
+                        target.setReadable(false, false)
+                        target.setWritable(false, false)
+                        target.setReadable(true, true)
+                        target.setWritable(true, true)
+                        try { android.system.Os.chmod(target.absolutePath, 384) } catch (_: Exception) {}
                     }
                 } catch (e: Exception) {}
             }
@@ -509,8 +513,11 @@ migrations:  {
             try {
                 target.parentFile?.mkdirs()
                 target.writeText(tokenJson, Charsets.UTF_8)
-                target.setReadable(true, false)
-                target.setWritable(true, false)
+                target.setReadable(false, false)
+                target.setWritable(false, false)
+                target.setReadable(true, true)
+                target.setWritable(true, true)
+                try { android.system.Os.chmod(target.absolutePath, 384) } catch (_: Exception) {}
             } catch (e: Exception) {}
         }
         syncCompanionStateFiles(context)
@@ -544,8 +551,11 @@ migrations:  {
             try {
                 target.parentFile?.mkdirs()
                 target.writeText(finalJsonStr, Charsets.UTF_8)
-                target.setReadable(true, false)
-                target.setWritable(true, false)
+                target.setReadable(false, false)
+                target.setWritable(false, false)
+                target.setReadable(true, true)
+                target.setWritable(true, true)
+                try { android.system.Os.chmod(target.absolutePath, 384) } catch (_: Exception) {}
             } catch (e: Exception) {}
         }
         syncCompanionStateFiles(context)

@@ -137,8 +137,11 @@ object AccountManager {
             root.put("accounts", arr)
             file.parentFile?.mkdirs()
             file.writeText(root.toString(2), Charsets.UTF_8)
-            file.setReadable(true, false)
-            file.setWritable(true, false)
+            file.setReadable(false, false)
+            file.setWritable(false, false)
+            file.setReadable(true, true)
+            file.setWritable(true, true)
+            try { android.system.Os.chmod(file.absolutePath, 384) } catch (_: Exception) {}
         } catch (e: Exception) {
             AppLogger.e("AccountManager", "Failed to persist accounts: ${e.message}")
         }
