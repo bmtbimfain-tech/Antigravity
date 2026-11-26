@@ -95,7 +95,7 @@ jobs:
         run: |
           VER_NAME=$(grep -m1 'versionName' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
           VER_CODE=$(grep -m1 'versionCode' app/build.gradle.kts | sed -E 's/.*=[[:space:]]*([0-9]+).*/\1/')
-          TAG="v${VER_NAME}-c${VER_CODE}"
+          TAG="v${VER_NAME}"
           APK_FILE=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
           [ -n "$APK_FILE" ] || exit 1
           if gh release view "$TAG" >/dev/null 2>&1; then

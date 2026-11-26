@@ -290,8 +290,8 @@ class UpdateChecker(private val context: Context) {
 
     private fun isNewerVersion(currentVersion: String, remoteVersion: String): Boolean {
         try {
-            val cleanCurrent = currentVersion.lowercase().replace("v", "")
-            val cleanRemote = remoteVersion.lowercase().replace("v", "")
+            val cleanCurrent = currentVersion.lowercase().removePrefix("v").substringBefore("-")
+            val cleanRemote = remoteVersion.lowercase().removePrefix("v").substringBefore("-")
             val currentParts = cleanCurrent.split(".")
             val remoteParts = cleanRemote.split(".")
             val maxLength = maxOf(currentParts.size, remoteParts.size)
