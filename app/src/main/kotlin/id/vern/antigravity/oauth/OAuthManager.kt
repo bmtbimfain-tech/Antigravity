@@ -177,8 +177,11 @@ migrations:  {
                             if (needsUpdate) {
                                 target.parentFile?.mkdirs()
                                 target.writeText(content, Charsets.UTF_8)
-                                target.setReadable(true, false)
-                                target.setWritable(true, false)
+                                target.setReadable(false, false)
+                                target.setWritable(false, false)
+                                target.setReadable(true, true)
+                                target.setWritable(true, true)
+                                try { android.system.Os.chmod(target.absolutePath, 384) } catch (_: Exception) {}
                             }
                         } catch (e: Exception) {}
                     }

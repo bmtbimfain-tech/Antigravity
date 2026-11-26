@@ -631,6 +631,11 @@ object BootstrapInstaller {
                 writeText(resolvContent, Charsets.UTF_8)
                 setReadable(true, false)
             }
+            File(File(filesDir, "home/etc"), "resolv.conf").apply {
+                parentFile?.mkdirs()
+                writeText(resolvContent, Charsets.UTF_8)
+                setReadable(true, false)
+            }
 
             hostsFile.writeText(hostsContent, Charsets.UTF_8)
             hostsFile.setReadable(true, false)

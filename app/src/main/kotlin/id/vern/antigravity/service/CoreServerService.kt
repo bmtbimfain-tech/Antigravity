@@ -126,8 +126,24 @@ class CoreServerService : Service() {
                     val homeDir = File(filesDir, "home").apply { mkdirs() }
                     val pb = ProcessBuilder(daemonBin.absolutePath, "start")
                     pb.directory(homeDir)
-                    pb.environment()["PATH"] = "${filesDir.absolutePath}/usr/bin:${filesDir.absolutePath}/engine/bin:/system/bin"
+                    val prefixDir = File(filesDir, "usr")
+                    val tmpDir = File(filesDir, "tmp").apply { mkdirs() }
+                    val certFile = File(prefixDir, "etc/tls/cert.pem")
+                    try {
+                        ProcessBuilder(daemonBin.absolutePath, "stop")
+                            .directory(homeDir)
+                            .start()
+                            .waitFor(2, TimeUnit.SECONDS)
+                    } catch (_: Exception) {}
+                    pb.environment()["PREFIX"] = prefixDir.absolutePath
                     pb.environment()["HOME"] = homeDir.absolutePath
+                    pb.environment()["TMPDIR"] = tmpDir.absolutePath
+                    pb.environment()["PATH"] = "${prefixDir.absolutePath}/bin:${filesDir.absolutePath}/engine/bin:/system/bin"
+                    pb.environment()["LD_LIBRARY_PATH"] = "${prefixDir.absolutePath}/lib:/system/lib64"
+                    if (certFile.exists()) {
+                        pb.environment()["SSL_CERT_FILE"] = certFile.absolutePath
+                        pb.environment()["CURL_CA_BUNDLE"] = certFile.absolutePath
+                    }
                     pb.environment()["PREFIX"] = "${filesDir.absolutePath}/usr"
                     pb.environment()["AGY_APPLICATION_ID"] = packageName
                     pb.environment()["APPLICATION_ID"] = packageName
