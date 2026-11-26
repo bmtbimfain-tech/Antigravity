@@ -27,24 +27,43 @@ data class AvailableModelInfo(
     val provider: String,
     val remainingFraction: Double? = null,
     val resetTime: String? = null,
-    val availability: ModelAvailability = ModelAvailability.UNKNOWN
+    val availability: ModelAvailability = ModelAvailability.UNKNOWN,
+    val groupName: String? = null
 ) {
     val percentage: Int? get() = remainingFraction?.let { kotlin.math.floor(it * 100.0).toInt().coerceIn(0, 100) }
 
     fun matches(query: String): Boolean {
-        return modelId.equals(query, ignoreCase = true) ||
-                displayName.equals(query, ignoreCase = true) ||
-                (query.contains("Flash", ignoreCase = true) && (modelId.contains("Flash", ignoreCase = true) || displayName.contains("Flash", ignoreCase = true))) ||
-                (query.contains("Neon", ignoreCase = true) && (modelId.contains("Neon", ignoreCase = true) || displayName.contains("Neon", ignoreCase = true))) ||
-                (query.contains("Hydrogen", ignoreCase = true) && (modelId.contains("Hydrogen", ignoreCase = true) || displayName.contains("Hydrogen", ignoreCase = true))) ||
-                (query.contains("Argon", ignoreCase = true) && (modelId.contains("Argon", ignoreCase = true) || displayName.contains("Argon", ignoreCase = true))) ||
-                (query.contains("Carbon", ignoreCase = true) && (modelId.contains("Carbon", ignoreCase = true) || displayName.contains("Carbon", ignoreCase = true))) ||
-                (query.contains("Sonnet", ignoreCase = true) && (modelId.contains("Sonnet", ignoreCase = true) || displayName.contains("Sonnet", ignoreCase = true) || modelId.equals("Claude", ignoreCase = true))) ||
-                (query.contains("Opus", ignoreCase = true) && (modelId.contains("Opus", ignoreCase = true) || displayName.contains("Opus", ignoreCase = true) || modelId.equals("Claude", ignoreCase = true))) ||
-                (query.contains("GPT", ignoreCase = true) && (modelId.contains("GPT", ignoreCase = true) || displayName.contains("GPT", ignoreCase = true)))
+        if (query.isBlank()) return false
+        if (modelId.equals(query, ignoreCase = true) || displayName.equals(query, ignoreCase = true)) return true
+
+        val qNorm = normalizeForMatch(query)
+        val idNorm = normalizeForMatch(modelId)
+        val dispNorm = normalizeForMatch(displayName)
+
+        if (qNorm.isNotBlank()) {
+            if (qNorm == idNorm || qNorm == dispNorm) return true
+            val qTokens = qNorm.split(" ").filter { it.isNotBlank() }
+            val idTokens = idNorm.split(" ").filter { it.isNotBlank() }
+            val dispTokens = dispNorm.split(" ").filter { it.isNotBlank() }
+            if (qTokens == idTokens || qTokens == dispTokens) return true
+        }
+        return false
     }
 
+    companion object {
+        private val PARENTHESIS_REGEX = Regex("""\s*\([^)]*\)""")
+        private val TIERED_REGEX = Regex("""[-_]tiered(?=[-_]|$)""", RegexOption.IGNORE_CASE)
+        private val EFFORT_REGEX = Regex("""[-_](?:thinking|high|medium|low|xhigh|max)(?=[-_]|$)""", RegexOption.IGNORE_CASE)
+        private val NON_ALPHANUM_REGEX = Regex("""[^a-zA-Z0-9.]""")
 
+        fun normalizeForMatch(s: String): String {
+            var res = s.replace(PARENTHESIS_REGEX, "")
+            res = res.replace(TIERED_REGEX, "")
+            res = res.replace(EFFORT_REGEX, "")
+            res = res.replace(NON_ALPHANUM_REGEX, " ").lowercase()
+            return res.split(Regex("""\s+""")).filter { it.isNotBlank() }.joinToString(" ")
+        }
+    }
 }
 
 enum class SubscriptionTierType {
@@ -58,7 +77,8 @@ data class QuotaGroup(
     val displayName: String,
     val description: String? = null,
     val sharedModels: List<String> = emptyList(),
-    val buckets: List<QuotaBucket> = emptyList()
+    val buckets: List<QuotaBucket> = emptyList(),
+    val modelIds: Set<String> = emptySet()
 )
 
 data class UserQuotaSummary(

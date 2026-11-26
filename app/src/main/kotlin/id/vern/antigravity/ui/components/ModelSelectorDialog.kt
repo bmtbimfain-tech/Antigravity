@@ -135,57 +135,59 @@ internal fun getModelQuotaPercentage(
     summary: UserQuotaSummary?
 ): Pair<Int?, String?> {
     if (summary == null) return Pair(null, null)
-    val geminiGroup = summary.groups.firstOrNull { it.displayName.contains("gemini", ignoreCase = true) && !it.displayName.contains("argon", ignoreCase = true) }
-    val argonGroup = summary.groups.firstOrNull { it.displayName.contains("argon", ignoreCase = true) }
-    val thirdPartyGroup = summary.groups.firstOrNull {
-        it.displayName.contains("claude", ignoreCase = true) || it.displayName.contains("gpt", ignoreCase = true)
-    }
 
-    val isFlashOrNeon = modelId.contains("Flash", ignoreCase = true) || modelId.contains("Neon", ignoreCase = true)
-    if (isFlashOrNeon) {
-        val fiveHB = geminiGroup?.buckets?.firstOrNull { it.window.equals("5h", ignoreCase = true) || it.bucketId.contains("5h", ignoreCase = true) }
-        val weeklyB = geminiGroup?.buckets?.firstOrNull { it.window.equals("weekly", ignoreCase = true) || it.bucketId.contains("weekly", ignoreCase = true) }
+    // 1. Find matching model in availableModels
+    val matchingAvail = summary.availableModels.firstOrNull { it.matches(modelId) }
+
+    // 2. Find the model's group from server
+    val ownerGroup = summary.groups.firstOrNull { group ->
+        (matchingAvail?.groupName != null && group.displayName.equals(matchingAvail.groupName, ignoreCase = true)) ||
+        group.modelIds.any { it.equals(modelId, ignoreCase = true) || (matchingAvail != null && it.equals(matchingAvail.modelId, ignoreCase = true)) } ||
+        group.sharedModels.any { shared ->
+            matchingAvail?.matches(shared) == true ||
+            id.vern.antigravity.data.AvailableModelInfo.normalizeForMatch(shared) == id.vern.antigravity.data.AvailableModelInfo.normalizeForMatch(modelId)
+        }
+    } ?: if (matchingAvail != null) {
+        summary.groups.firstOrNull { group ->
+            (matchingAvail.provider.isNotBlank() && group.displayName.contains(matchingAvail.provider, ignoreCase = true)) ||
+            (matchingAvail.displayName.isNotBlank() && group.displayName.contains(matchingAvail.displayName.split(" ").firstOrNull().orEmpty(), ignoreCase = true))
+        }
+    } else null
+
+    // 3. If a group with buckets was found, derive percentage & subtext from buckets
+    if (ownerGroup != null && ownerGroup.buckets.isNotEmpty()) {
+        val fiveHB = ownerGroup.buckets.firstOrNull {
+            it.window.equals("5h", ignoreCase = true) ||
+            it.bucketId.contains("5h", ignoreCase = true) ||
+            it.displayName.contains("5h", ignoreCase = true) ||
+            it.displayName.contains("Five Hour", ignoreCase = true)
+        }
+        val weeklyB = ownerGroup.buckets.firstOrNull {
+            it.window.equals("weekly", ignoreCase = true) ||
+            it.bucketId.contains("weekly", ignoreCase = true) ||
+            it.displayName.contains("weekly", ignoreCase = true)
+        }
+
         if (fiveHB != null && weeklyB != null) {
             val sub = "${fiveHB.subtext ?: ""} (Weekly: ${weeklyB.percentage}%)".trim()
             return Pair(fiveHB.percentage, sub)
+        } else if (fiveHB != null) {
+            return Pair(fiveHB.percentage, fiveHB.subtext)
+        } else if (weeklyB != null) {
+            return Pair(weeklyB.percentage, weeklyB.subtext)
+        } else {
+            val b = ownerGroup.buckets.first()
+            return Pair(b.percentage, b.subtext)
         }
     }
 
-    val matchingAvail = summary.availableModels.firstOrNull { it.matches(modelId) }
+    // 4. Fallback to model's individual quotaInfo if no group buckets
     if (matchingAvail != null && matchingAvail.percentage != null) {
         val sub = matchingAvail.resetTime?.let { id.vern.antigravity.service.CloudCodeQuotaService.formatSubtext(it) }
         return Pair(matchingAvail.percentage, sub)
     }
 
-    return when {
-        modelId.contains("Argon", ignoreCase = true) -> {
-            val weeklyB = argonGroup?.buckets?.firstOrNull { it.window.equals("weekly", ignoreCase = true) || it.bucketId.contains("weekly", ignoreCase = true) }
-                ?: argonGroup?.buckets?.firstOrNull()
-                ?: geminiGroup?.buckets?.firstOrNull { it.window.equals("weekly", ignoreCase = true) || it.bucketId.contains("weekly", ignoreCase = true) }
-            val sub = weeklyB?.subtext ?: matchingAvail?.resetTime?.let { id.vern.antigravity.service.CloudCodeQuotaService.formatSubtext(it) }
-            val pct = weeklyB?.percentage ?: if (matchingAvail?.resetTime != null) 0 else null
-            Pair(pct, sub)
-        }
-        isFlashOrNeon -> {
-            val fiveHB = geminiGroup?.buckets?.firstOrNull { it.window.equals("5h", ignoreCase = true) || it.bucketId.contains("5h", ignoreCase = true) }
-            val weeklyB = geminiGroup?.buckets?.firstOrNull { it.window.equals("weekly", ignoreCase = true) || it.bucketId.contains("weekly", ignoreCase = true) }
-            val b = fiveHB ?: weeklyB
-            Pair(b?.percentage, b?.subtext)
-        }
-        modelId.contains("Hydrogen", ignoreCase = true) || modelId.contains("Carbon", ignoreCase = true) || modelId.contains("Gemini", ignoreCase = true) -> {
-            val weeklyB = geminiGroup?.buckets?.firstOrNull { it.window.equals("weekly", ignoreCase = true) || it.bucketId.contains("weekly", ignoreCase = true) }
-                ?: geminiGroup?.buckets?.firstOrNull()
-            val sub = weeklyB?.subtext ?: matchingAvail?.resetTime?.let { id.vern.antigravity.service.CloudCodeQuotaService.formatSubtext(it) }
-            val pct = weeklyB?.percentage ?: if (matchingAvail?.resetTime != null) 0 else null
-            Pair(pct, sub)
-        }
-        modelId.contains("Claude", ignoreCase = true) || modelId.contains("Sonnet", ignoreCase = true) || modelId.contains("Opus", ignoreCase = true) || modelId.contains("GPT", ignoreCase = true) -> {
-            val b = thirdPartyGroup?.buckets?.firstOrNull { it.window.equals("weekly", ignoreCase = true) || it.bucketId.contains("weekly", ignoreCase = true) }
-                ?: thirdPartyGroup?.buckets?.firstOrNull()
-            Pair(b?.percentage, b?.subtext)
-        }
-        else -> Pair(null, null)
-    }
+    return Pair(null, null)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -70,6 +70,8 @@ If you find Antigravity for Android useful and want to support its development, 
 
 ## Credits
 
+- **[Muhamad Irsyad Al Bana (irsyadbana31)](https://github.com/irsyadbana31)**: ACP live thought streaming, Cloud Code quota sync, native FileProvider opener, and completion notifications.
+- **[Douglas (douglasmidiacerta)](https://github.com/douglasmidiacerta)**: Live agent execution status in foreground notifications and Portuguese localization.
 - **[Werdik (werdio325-png)](https://github.com/werdio325-png)** — `pkg`, `agy-daemon`, and userspace scripts.
 - **[Termux](https://github.com/termux)** — Android ARM64 rootfs base and `libtermux-exec`.
 - **[Google DeepMind](https://deepmind.google)** — Antigravity core `language_server`.

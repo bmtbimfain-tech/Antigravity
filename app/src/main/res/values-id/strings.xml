@@ -174,6 +174,10 @@
     <string name="about_repo_desc">Aplikasi Android native untuk Google Antigravity</string>
     <string name="about_contrib_vern_title">Vern (KuatoDev)</string>
     <string name="about_contrib_vern_desc">Arsitektur aplikasi Android, implementasi Kotlin, UI Jetpack Compose, dan integrasi Google OAuth.</string>
+    <string name="about_contrib_irsyad_title">Muhamad Irsyad Al Bana (@irsyadbana31)</string>
+    <string name="about_contrib_irsyad_desc">Streaming pemikiran langsung ACP, sinkronisasi kuota Cloud Code, pembuka berkas FileProvider, dan notifikasi penyelesaian.</string>
+    <string name="about_contrib_douglas_title">Douglas (@douglasmidiacerta)</string>
+    <string name="about_contrib_douglas_desc">Status eksekusi agen langsung pada notifikasi latar depan Android dan lokalisasi bahasa Portugis.</string>
     <string name="about_contrib_werdik_title">Werdik (werdio325-png)</string>
     <string name="about_contrib_werdik_desc">Environment userspace Android (env/), package manager pkg (Bash/AWK), dan scheduler agy-daemon.</string>
     <string name="about_contrib_termux_title">Termux Project</string>
@@ -396,6 +400,12 @@
     <string name="notification_channel_desc">Eksekutor latar belakang dan pengawas proses Antigravity</string>
     <string name="notification_engine_active">Antigravity Aktif</string>
     <string name="notification_engine_running">Antigravity Engine Berjalan</string>
+    <string name="notification_agent_working">Agen sedang bekerja…</string>
+    <string name="notification_agent_command">Menjalankan: %1$s</string>
+    <string name="notification_agent_responding">Menulis respons…</string>
+    <string name="notification_agent_edit">Mengedit: %1$s</string>
+    <string name="notification_agent_read">Membaca: %1$s</string>
+    <string name="notification_agent_search">Mencari: %1$s</string>
     <string name="notification_action_stop">Stop</string>
     <string name="notification_action_restart">Restart</string>
 
@@ -643,5 +653,32 @@
     <string name="model_toast_requires_pro">%1$s memerlukan langganan Google AI Pro</string>
     <string name="model_toast_requires_ultra">%1$s memerlukan langganan Google AI Ultra</string>
     <string name="workspace_label">Ruang Kerja: %1$s</string>
+    <string name="agent_done_notification_channel_name">Respons Agen</string>
+    <string name="agent_done_notification_channel_desc">Notifikasi saat Antigravity selesai berpikir di latar belakang</string>
+    <string name="agent_done_notification_title">Antigravity selesai</string>
+    <string name="agent_done_notification_title_duration">Antigravity selesai · %1$s</string>
+    <string name="agent_error_notification_title">Antigravity · Gagal</string>
+    <string name="settings_notify_on_completion_title">Notifikasi saat selesai merespons</string>
+    <string name="settings_notify_on_completion_desc">Kirim notifikasi saat Antigravity selesai berpikir ketika aplikasi di latar belakang atau layar mati.</string>
+    <string name="file_opener_not_found">Berkas tidak ditemukan: %1$s</string>
+    <string name="file_opener_cannot_open">Tidak dapat membuka: %1$s</string>
+    <string name="file_opener_cannot_share">Tidak dapat membagikan berkas: %1$s</string>
+    <string name="file_opener_no_app">Tidak ada aplikasi untuk membuka: %1$s</string>
+    <string name="nav_drawer_toggle">Percakapan &amp; Project</string>
+    <string name="nav_side_panel_toggle">Buka atau tutup panel workspace</string>
+    <string name="editor_select_file_prompt">Pilih berkas dari penjelajah untuk dibuka di editor</string>
+    <string name="editor_empty_title">Belum ada berkas terbuka di editor</string>
+    <string name="editor_empty_subtitle">Buka tab Berkas untuk memilih berkas dari workspace Anda.</string>
+    <string name="agent_review_header_count">Tinjauan (%1$d/%2$d)</string>
+    <string name="agent_review_filter_all">Semua</string>
+    <string name="agent_review_filter_kotlin">Kotlin</string>
+    <string name="agent_review_filter_config">Konfigurasi</string>
+    <string name="agent_review_filter_markdown">Markdown</string>
+    <string name="agent_review_diff_refreshed">Perubahan workspace diperbarui</string>
+    <string name="agent_review_expand_all">Bentangkan Semua</string>
+    <string name="agent_review_collapse_all">Ciutkan Semua</string>
+    <string name="agent_review_empty_search">Tidak ada berkas berubah yang cocok dengan pencarian.</string>
+    <string name="agent_review_empty">Belum ada berkas yang diubah di workspace untuk ditinjau.</string>
+    <string name="topbar_core_update_short">Update</string>
 </resources>
 

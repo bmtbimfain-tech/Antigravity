@@ -44,9 +44,11 @@ import id.vern.antigravity.data.SlashAction
 import id.vern.antigravity.data.SlashCommandParser
 import id.vern.antigravity.data.SYSTEM_SLASH_COMMANDS
 import id.vern.antigravity.data.mergeDynamicSlashActions
+import id.vern.antigravity.service.AgentCompletionNotification
 import id.vern.antigravity.service.AgyModelsService
 import id.vern.antigravity.service.CliModel
 import id.vern.antigravity.service.CloudCodeQuotaService
+import id.vern.antigravity.service.ConversationTitleGenerator
 import id.vern.antigravity.service.PermissionConfigService
 import id.vern.antigravity.service.PermissionGrantsState
 import id.vern.antigravity.service.PermissionRule
@@ -65,6 +67,7 @@ import id.vern.antigravity.oauth.OAuthManager
 import id.vern.antigravity.oauth.AccountManager
 import id.vern.antigravity.oauth.StoredAccount
 import id.vern.antigravity.service.CoreServerService
+import id.vern.antigravity.service.ForegroundNotification
 import id.vern.antigravity.util.AppLogger
 import id.vern.antigravity.util.AppUpdateState
 import id.vern.antigravity.util.UpdateChecker
@@ -181,6 +184,7 @@ class AntigravityViewModel : ViewModel() {
         const val CLI_MODELS_THROTTLE_MS = 10L * 60L * 1000L
         const val KEY_THINKING_BUDGET = "ag_thinking_budget"
         const val KEY_VERBOSE_THINKING = "ag_verbose_thinking"
+        const val KEY_NOTIFY_ON_COMPLETION = "ag_notify_on_completion"
         const val KEY_CONVERSATION_WIDTH = "ag_conversation_width"
         const val KEY_THEME_PRESET = "ag_theme_preset"
         const val KEY_CUSTOM_THEME_BG = "ag_custom_theme_bg"
@@ -224,6 +228,7 @@ class AntigravityViewModel : ViewModel() {
     val selectedModelCliId: StateFlow<String?> = settingsPreferencesDelegate.selectedModelCliId
     val thinkingBudget: StateFlow<String> = settingsPreferencesDelegate.thinkingBudget
     val verboseThinking: StateFlow<Boolean> = settingsPreferencesDelegate.verboseThinking
+    val notifyOnCompletion: StateFlow<Boolean> = settingsPreferencesDelegate.notifyOnCompletion
     val conversationWidth: StateFlow<String> = settingsPreferencesDelegate.conversationWidth
     val themePreset: StateFlow<String> = settingsPreferencesDelegate.themePreset
     val customThemeBg: StateFlow<String> = settingsPreferencesDelegate.customThemeBg
@@ -400,10 +405,15 @@ class AntigravityViewModel : ViewModel() {
             val result = AgyModelsService.fetchCliModels(context, force = force)
             if (result.models.isNotEmpty()) {
                 adoptCliCatalog(context, result.models)
-                val hasArgonInCli = result.models.any { CloudCodeQuotaService.isArgonModel(it.cliId, it.displayName) }
-                val currentGroups = mutableUserQuotaSummary.value?.groups.orEmpty()
-                val hasArgonGroup = currentGroups.any { it.displayName.contains("argon", ignoreCase = true) }
-                if (hasArgonInCli && !hasArgonGroup) {
+                val currentAvail = mutableUserQuotaSummary.value?.availableModels.orEmpty()
+                val hasUnmappedCliModel = currentAvail.isEmpty() || result.models.any { cli ->
+                    currentAvail.none { avail ->
+                        avail.modelId.equals(cli.cliId, ignoreCase = true) ||
+                        avail.matches(cli.cliId) ||
+                        avail.matches(cli.displayName)
+                    }
+                }
+                if (hasUnmappedCliModel) {
                     val refreshedQuota = CloudCodeQuotaService.fetchQuotaSummary(context, mutableCodeAssistTier.value)
                     if (refreshedQuota != null) {
                         mutableUserQuotaSummary.value = refreshedQuota
@@ -555,6 +565,9 @@ class AntigravityViewModel : ViewModel() {
 
     fun setVerboseThinking(context: Context, verbose: Boolean) =
         settingsPreferencesDelegate.setVerboseThinking(context, verbose)
+
+    fun setNotifyOnCompletion(context: Context, enabled: Boolean) =
+        settingsPreferencesDelegate.setNotifyOnCompletion(context, enabled)
 
     fun setConversationWidth(context: Context, width: String) =
         settingsPreferencesDelegate.setConversationWidth(context, width)
@@ -1539,11 +1552,17 @@ class AntigravityViewModel : ViewModel() {
             conversationManagerDelegate.setActiveConversationIdDirect(convId)
         }
 
+        var autoTitleSeed: String? = null
         if (conversationTitle.value == "New Conversation" || conversationTitle.value.isBlank()) {
-            val titleCandidate = content.lines().firstOrNull { it.isNotBlank() }?.trim()?.take(35)
-                ?: currentAttachments.firstOrNull()?.name?.take(35)
-            if (!titleCandidate.isNullOrEmpty()) {
+            val titleCandidate = ConversationTitleGenerator.buildImmediateFallbackTitle(
+                userPrompt = content,
+                attachmentName = currentAttachments.firstOrNull()?.name
+            )
+            if (titleCandidate.isNotBlank() && titleCandidate != "New Conversation") {
                 conversationManagerDelegate.setConversationTitleDirect(titleCandidate)
+                if (isFirstMessage) {
+                    autoTitleSeed = titleCandidate
+                }
             }
         }
 
@@ -1599,7 +1618,7 @@ class AntigravityViewModel : ViewModel() {
             return
         }
 
-        executeAiTurn(context, effectiveContent, convId, currentAttachments)
+        executeAiTurn(context, effectiveContent, convId, currentAttachments, autoTitleSeed)
     }
 
     private val executionWakeLock = WakeLockHolder()
@@ -1666,9 +1685,13 @@ class AntigravityViewModel : ViewModel() {
         context: Context,
         prompt: String,
         convId: String,
-        attachments: List<AttachedFile> = emptyList()
+        attachments: List<AttachedFile> = emptyList(),
+        autoTitleSeed: String? = null
     ) {
         currentAiExecutionJob?.cancel()
+        val notification = ForegroundNotification.beginExecution(
+            context.getString(R.string.notification_agent_working)
+        )
         currentAiExecutionJob = viewModelScope.launch(Dispatchers.IO) {
             executionWakeLock.acquire(context, 30 * 60 * 1000L)
             mutableIsExecuting.value = true
@@ -1693,6 +1716,9 @@ class AntigravityViewModel : ViewModel() {
 
                 if (prompt.startsWith("!") || prompt.startsWith("$ ")) {
                     val cmd = if (prompt.startsWith("!")) prompt.substring(1).trim() else prompt.substring(2).trim()
+                    ForegroundNotification.updateExecution(
+                        notification, context.getString(R.string.notification_agent_command, cmd)
+                    )
                     mutableChatMessages.update { list ->
                         list.map { msg ->
                             if (msg.id == assistantMsgId) {
@@ -1786,6 +1812,7 @@ class AntigravityViewModel : ViewModel() {
                     var activeCliConvId: String? = priorCliSession
                     var lastStreamUpdateMs = 0L
                     var lastStepUpdateMs = 0L
+                    val activeNotificationSteps = linkedMapOf<String, String>()
                     var lastTranscriptPollMs = 0L
                     var activeThoughtStartMs = 0L
                     val activeThoughtSb = StringBuilder()
@@ -2084,6 +2111,7 @@ class AntigravityViewModel : ViewModel() {
                                                     }
                                                 }
 
+                                                val notificationStepId = stepUpdate.optString("step_id").ifBlank { stableStepId }
                                                 if (state == "ACTIVE") {
                                                     val toolDesc = when {
                                                         stepKind == AgentStepKind.COMMAND -> "$stepTitle"
@@ -2092,8 +2120,32 @@ class AntigravityViewModel : ViewModel() {
                                                         stepKind == AgentStepKind.SEARCH -> "Search $stepTitle"
                                                         else -> "$toolName $stepTitle"
                                                     }
+                                                    val command = if (toolName == "run_command") {
+                                                        params?.optString("CommandLine").orEmpty().trim()
+                                                    } else ""
+                                                    val notificationText = when {
+                                                        command.isNotBlank() -> context.getString(R.string.notification_agent_command, command)
+                                                        stepKind == AgentStepKind.EDITED -> context.getString(R.string.notification_agent_edit, "${stepTitle} ${stepDiff ?: ""}".trim())
+                                                        stepKind == AgentStepKind.ANALYZED -> context.getString(R.string.notification_agent_read, "${stepTitle} ${stepLines ?: ""}".trim())
+                                                        stepKind == AgentStepKind.SEARCH -> context.getString(R.string.notification_agent_search, stepTitle)
+                                                        stepKind == AgentStepKind.COMMAND -> context.getString(R.string.notification_agent_command, stepTitle)
+                                                        else -> stepTitle
+                                                    }
+                                                    synchronized<Unit>(activeNotificationSteps) {
+                                                        activeNotificationSteps.remove(notificationStepId)
+                                                        activeNotificationSteps[notificationStepId] = notificationText
+                                                        ForegroundNotification.updateExecution(notification, notificationText)
+                                                    }
                                                     TerminalSessionManager.appendAgyLine("> $toolDesc", isCommand = true)
                                                 } else {
+                                                    synchronized<Unit>(activeNotificationSteps) {
+                                                        if (activeNotificationSteps.remove(notificationStepId) != null) {
+                                                            ForegroundNotification.updateExecution(
+                                                                notification,
+                                                                activeNotificationSteps.values.lastOrNull() ?: notification.text
+                                                            )
+                                                        }
+                                                    }
                                                     if (!stepDetail.isNullOrBlank()) {
                                                         TerminalSessionManager.appendAgyLine(stepDetail)
                                                     }
@@ -2195,6 +2247,13 @@ class AntigravityViewModel : ViewModel() {
                                                 }
                                                 val textDelta = stepUpdate.optString("text_delta", "")
                                                 if (textDelta.isNotEmpty()) {
+                                                    synchronized<Unit>(activeNotificationSteps) {
+                                                        if (activeNotificationSteps.isEmpty()) {
+                                                            ForegroundNotification.updateExecution(
+                                                                notification, context.getString(R.string.notification_agent_responding)
+                                                            )
+                                                        }
+                                                    }
                                                     outputSb.append(textDelta)
                                                     val now = System.currentTimeMillis()
                                                     if (now - lastStreamUpdateMs > 200L) {
@@ -2283,7 +2342,8 @@ class AntigravityViewModel : ViewModel() {
                             EngineExecutor.executeAgyAcpTurn(
                                 context = context,
                                 prompt = currentPrompt,
-                                cliModelId = cliId.ifBlank { null },
+                                cliModelId = cliId.ifBlank { selectedModel.value.ifBlank { null } },
+                                thinkingEffort = thinkingBudget.value,
                                 sessionToResume = sessionToResume,
                                 workingDir = validWsDir,
                                 onOutputLine = onAgyLine
@@ -2432,6 +2492,28 @@ class AntigravityViewModel : ViewModel() {
                             } else msg
                         }
                     }
+
+                    if (notifyOnCompletion.value) {
+                        val activeTitle = conversationHistory.value.firstOrNull { it.id == convId }?.title
+                            ?: conversationTitle.value
+                        AgentCompletionNotification.notifyTurnFinished(
+                            context = context.applicationContext,
+                            conversationTitle = activeTitle,
+                            responsePreview = finalContent,
+                            durationText = durText,
+                            isError = exitCode != 0
+                        )
+                    }
+
+                    if (autoTitleSeed != null && exitCode == 0 && !authRequired && finalContent.isNotBlank()) {
+                        launchContextualAutoTitle(
+                            context = context.applicationContext,
+                            convId = convId,
+                            expectedCurrentTitle = autoTitleSeed,
+                            userPrompt = prompt,
+                            assistantResponse = finalContent
+                        )
+                    }
                 }
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) {
@@ -2439,19 +2521,32 @@ class AntigravityViewModel : ViewModel() {
                         list.filter { it.id != assistantMsgId || it.content.isNotBlank() }
                     }
                 } else {
+                    val errorMsg = "Execution error: ${e.message}"
                     mutableChatMessages.update { list ->
                         list.map { msg ->
                             if (msg.id == assistantMsgId) {
                                 msg.copy(
                                     status = MessageStatus.ERROR,
-                                    content = "Execution error: ${e.message}",
+                                    content = errorMsg,
                                     thinking = null
                                 )
                             } else msg
                         }
                     }
+                    if (notifyOnCompletion.value) {
+                        val activeTitle = conversationHistory.value.firstOrNull { it.id == convId }?.title
+                            ?: conversationTitle.value
+                        AgentCompletionNotification.notifyTurnFinished(
+                            context = context.applicationContext,
+                            conversationTitle = activeTitle,
+                            responsePreview = errorMsg,
+                            durationText = null,
+                            isError = true
+                        )
+                    }
                 }
             } finally {
+                ForegroundNotification.endExecution(notification)
                 executionWakeLock.release()
                 mutableIsExecuting.value = false
                 mutableActiveWorkingStatus.value = null
@@ -2466,6 +2561,42 @@ class AntigravityViewModel : ViewModel() {
                 saveMessagesForConversation(context, convId, currentList)
                 processNextQueuedMessage(context)
                 refreshUserQuota(context)
+            }
+        }.also { job ->
+            job.invokeOnCompletion { ForegroundNotification.endExecution(notification) }
+        }
+    }
+
+    private fun launchContextualAutoTitle(
+        context: Context,
+        convId: String,
+        expectedCurrentTitle: String,
+        userPrompt: String,
+        assistantResponse: String
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val generated = ConversationTitleGenerator.generateContextualTitle(
+                    context = context,
+                    userPrompt = userPrompt,
+                    assistantResponse = assistantResponse,
+                    availableModels = mutableCliModels.value,
+                    fallbackModelId = selectedModelCliId.value
+                ) ?: return@launch
+
+                val currentStoredTitle = conversationHistory.value.firstOrNull { it.id == convId }?.title
+                if (currentStoredTitle != expectedCurrentTitle) {
+                    return@launch
+                }
+
+                conversationManagerDelegate.renameConversation(
+                    newTitle = generated,
+                    summaryId = convId,
+                    context = context,
+                    onLog = ::addLog
+                )
+            } catch (e: Exception) {
+                addLog("Conversation", "Auto-title skipped: ${e.message}")
             }
         }
     }

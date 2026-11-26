@@ -33,16 +33,25 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -116,10 +125,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -145,6 +158,13 @@ fun ChatScreen(
     onNavigateToEditor: () -> Unit = {},
     onNavigateToTerminal: () -> Unit = {},
     onNavigateBack: (() -> Unit)? = null,
+    isWideScreen: Boolean = false,
+    isRightPanelOpen: Boolean = false,
+    onToggleRightPanel: (() -> Unit)? = null,
+    onOpenRightPanelTab: ((tab: Int, fileToOpen: String?) -> Unit)? = null,
+    openDrawerRequestTrigger: Int = 0,
+    openSettingsRequestTrigger: Int = 0,
+    onSettingsSheetVisibleChange: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -193,13 +213,44 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val terminalReq by viewModel.openTerminalRequest.collectAsStateWithLifecycle()
 
+    val handleOpenFile: (String) -> Unit = { path ->
+        if (onOpenRightPanelTab != null) {
+            onOpenRightPanelTab(3, path)
+        } else {
+            fileToOpenInEditor = path
+            detailsBottomSheetTab = 3
+            showDetailsBottomSheet = true
+        }
+    }
+
+    LaunchedEffect(openDrawerRequestTrigger) {
+        if (openDrawerRequestTrigger > 0) {
+            if (drawerState.isOpen) drawerState.close() else drawerState.open()
+        }
+    }
+
+    LaunchedEffect(openSettingsRequestTrigger) {
+        if (openSettingsRequestTrigger > 0) {
+            settingsInitialPage = SettingsPage.MAIN
+            showSettingsBottomSheet = true
+        }
+    }
+
+    LaunchedEffect(showSettingsBottomSheet) {
+        onSettingsSheetVisibleChange?.invoke(showSettingsBottomSheet)
+    }
+
     LaunchedEffect(terminalReq) {
         if (terminalReq != null) {
             showSettingsBottomSheet = false
             showSkillsDialog = false
             showPluginsDialog = false
-            detailsBottomSheetTab = 2
-            showDetailsBottomSheet = true
+            if (onOpenRightPanelTab != null) {
+                onOpenRightPanelTab(2, null)
+            } else {
+                detailsBottomSheetTab = 2
+                showDetailsBottomSheet = true
+            }
             viewModel.consumeOpenTerminalRequest()
         }
     }
@@ -450,24 +501,39 @@ fun ChatScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        modifier = Modifier
+            .fillMaxSize()
+            .clipToBounds(),
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-                modifier = Modifier
-                    .width(300.dp)
-                    .fillMaxHeight()
+                windowInsets = if (isWideScreen) {
+                    WindowInsets.systemBars.only(WindowInsetsSides.Vertical)
+                } else {
+                    androidx.compose.material3.DrawerDefaults.windowInsets
+                },
+                modifier = if (isWideScreen) {
+                    Modifier
+                        .widthIn(min = 200.dp, max = 276.dp)
+                        .fillMaxWidth(0.84f)
+                        .fillMaxHeight()
+                } else {
+                    Modifier
+                        .width(300.dp)
+                        .fillMaxHeight()
+                }
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(16.dp)
+                        .padding(if (isWideScreen) 12.dp else 16.dp)
                 ) {
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 16.dp)
+                            .padding(bottom = if (isWideScreen) 10.dp else 16.dp)
                     ) {
                         Image(
                             painter = painterResource(id = R.drawable.ic_launcher_logo),
@@ -1246,197 +1312,339 @@ fun ChatScreen(
             }
         }
     ) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = if (conversationTitle.isNotBlank() && conversationTitle != "New Conversation" && conversationTitle != "Antigravity -Android") conversationTitle else stringResource(R.string.chat_new_conversation),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+        val resolvedConversationTitle = if (
+            conversationTitle.isNotBlank() &&
+            conversationTitle != "New Conversation" &&
+            conversationTitle != "Antigravity -Android"
+        ) {
+            conversationTitle
+        } else {
+            stringResource(R.string.chat_new_conversation)
+        }
+        val isPanelHighlighted = if (onToggleRightPanel != null) isRightPanelOpen else showDetailsBottomSheet
+
+        val conversationActionsMenu: @Composable () -> Unit = {
+            DropdownMenu(
+                expanded = showMenuDropdown,
+                onDismissRequest = { showMenuDropdown = false },
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_rename_conversation)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
                         )
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        scrolledContainerColor = MaterialTheme.colorScheme.background,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface,
-                        navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
-                        actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    navigationIcon = {
-                        IconButton(onClick = {
-                            if (onNavigateBack != null) {
-                                onNavigateBack()
-                            } else {
-                                scope.launch { drawerState.open() }
-                            }
-                        }) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_launcher_logo),
-                                contentDescription = stringResource(R.string.app_name),
-                                tint = Color.Unspecified,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
+                    onClick = {
+                        showMenuDropdown = false
+                        showRenameDialog = true
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(if (isPinned) R.string.menu_unpin_conversation else R.string.menu_pin_conversation)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
                     },
-                    actions = {
-                        val coreState by viewModel.coreUpdateState.collectAsStateWithLifecycle()
-                        AnimatedVisibility(
-                            visible = coreState.isUpdateAvailable,
-                            enter = fadeIn() + scaleIn(),
-                            exit = fadeOut() + scaleOut()
-                        ) {
-                            Button(
-                                onClick = { showCoreUpdateConfirmDialog = true },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = AntigravityBlue),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier
-                                    .height(28.dp)
-                                    .padding(end = 4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SystemUpdate,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(13.dp),
-                                    tint = Color.White
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(R.string.topbar_core_update_btn),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
+                    onClick = {
+                        showMenuDropdown = false
+                        val pinned = viewModel.togglePinConversation(context = context)
+                        Toast.makeText(
+                            context,
+                            context.getString(if (pinned) R.string.toast_conversation_pinned else R.string.toast_conversation_unpinned),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_archive_conversation)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Archive,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    },
+                    onClick = {
+                        showMenuDropdown = false
+                        viewModel.archiveConversation(context = context)
+                        Toast.makeText(context, context.getString(R.string.toast_conversation_archived), Toast.LENGTH_SHORT).show()
+                    }
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_delete_conversation), color = AntigravityRed) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = AntigravityRed,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    },
+                    onClick = {
+                        showMenuDropdown = false
+                        showDeleteConversationDialog = true
+                    }
+                )
+
+                val currentProject = projectList.firstOrNull { it.absolutePath == currentWorkspace }
+                if (currentProject != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_delete_project, currentProject.name), color = AntigravityRed) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.DeleteForever,
+                                contentDescription = null,
+                                tint = AntigravityRed,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = {
+                            showMenuDropdown = false
+                            projectToDelete = currentProject
+                            showDeleteProjectDialog = true
                         }
+                    )
+                }
+            }
+        }
 
-                        Box {
-                            IconButton(onClick = { showMenuDropdown = true }) {
+        Scaffold(
+            topBar = {
+                val coreState by viewModel.coreUpdateState.collectAsStateWithLifecycle()
+                if (isWideScreen) {
+                    val isCompactHeight = LocalConfiguration.current.screenHeightDp < 430
+                    val topBarHeight = if (isCompactHeight) 42.dp else 48.dp
+                    val topActionSize = if (isCompactHeight) 38.dp else 44.dp
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.background)
+                            .statusBarsPadding()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(topBarHeight)
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    if (onNavigateBack != null) {
+                                        onNavigateBack()
+                                    } else {
+                                        scope.launch { drawerState.open() }
+                                    }
+                                },
+                                modifier = Modifier.size(topActionSize)
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = stringResource(R.string.common_options),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    imageVector = Icons.Default.Menu,
+                                    contentDescription = stringResource(R.string.nav_drawer_toggle),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(19.dp)
                                 )
                             }
-                            DropdownMenu(
-                                expanded = showMenuDropdown,
-                                onDismissRequest = { showMenuDropdown = false },
-                                shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+
+                            Text(
+                                text = resolvedConversationTitle,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 4.dp)
+                            )
+
+                            AnimatedVisibility(
+                                visible = coreState.isUpdateAvailable,
+                                enter = fadeIn() + scaleIn(),
+                                exit = fadeOut() + scaleOut()
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.menu_rename_conversation)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Edit,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    },
-                                    onClick = {
-                                        showMenuDropdown = false
-                                        showRenameDialog = true
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(if (isPinned) R.string.menu_unpin_conversation else R.string.menu_pin_conversation)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.PushPin,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    },
-                                    onClick = {
-                                        showMenuDropdown = false
-                                        val pinned = viewModel.togglePinConversation(context = context)
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(if (pinned) R.string.toast_conversation_pinned else R.string.toast_conversation_unpinned),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.menu_archive_conversation)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Archive,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    },
-                                    onClick = {
-                                        showMenuDropdown = false
-                                        viewModel.archiveConversation(context = context)
-                                        Toast.makeText(context, context.getString(R.string.toast_conversation_archived), Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.menu_delete_conversation), color = AntigravityRed) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = null,
-                                            tint = AntigravityRed,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    },
-                                    onClick = {
-                                        showMenuDropdown = false
-                                        showDeleteConversationDialog = true
-                                    }
-                                )
-
-                                val currentProject = projectList.firstOrNull { it.absolutePath == currentWorkspace }
-                                if (currentProject != null) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.menu_delete_project, currentProject.name), color = AntigravityRed) },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Default.DeleteForever,
-                                                contentDescription = null,
-                                                tint = AntigravityRed,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        },
-                                        onClick = {
-                                            showMenuDropdown = false
-                                            projectToDelete = currentProject
-                                            showDeleteProjectDialog = true
-                                        }
+                                Button(
+                                    onClick = { showCoreUpdateConfirmDialog = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AntigravityBlue),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier
+                                        .height(if (isCompactHeight) 26.dp else 28.dp)
+                                        .padding(end = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SystemUpdate,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(13.dp),
+                                        tint = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = stringResource(R.string.topbar_core_update_short),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        maxLines = 1
                                     )
                                 }
                             }
-                        }
 
-                        IconButton(onClick = {
-                            detailsBottomSheetTab = 0
-                            showDetailsBottomSheet = true
-                        }) {
-                            SidePanelIcon(
-                                tint = if (showDetailsBottomSheet) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Box {
+                                IconButton(
+                                    onClick = { showMenuDropdown = true },
+                                    modifier = Modifier.size(topActionSize)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = stringResource(R.string.common_options),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                                conversationActionsMenu()
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    if (onToggleRightPanel != null) {
+                                        onToggleRightPanel()
+                                    } else {
+                                        detailsBottomSheetTab = 0
+                                        showDetailsBottomSheet = true
+                                    }
+                                },
+                                modifier = Modifier.size(topActionSize)
+                            ) {
+                                SidePanelIcon(
+                                    tint = if (isPanelHighlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f))
                     }
-                )
+                } else {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = resolvedConversationTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background,
+                            scrolledContainerColor = MaterialTheme.colorScheme.background,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface,
+                            navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                            actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                if (onNavigateBack != null) {
+                                    onNavigateBack()
+                                } else {
+                                    scope.launch { drawerState.open() }
+                                }
+                            }) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_launcher_logo),
+                                    contentDescription = stringResource(R.string.app_name),
+                                    tint = Color.Unspecified,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        },
+                        actions = {
+                            AnimatedVisibility(
+                                visible = coreState.isUpdateAvailable,
+                                enter = fadeIn() + scaleIn(),
+                                exit = fadeOut() + scaleOut()
+                            ) {
+                                Button(
+                                    onClick = { showCoreUpdateConfirmDialog = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AntigravityBlue),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier
+                                        .height(28.dp)
+                                        .padding(end = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SystemUpdate,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(13.dp),
+                                        tint = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = stringResource(R.string.topbar_core_update_btn),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+
+                            Box {
+                                IconButton(onClick = { showMenuDropdown = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = stringResource(R.string.common_options),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                conversationActionsMenu()
+                            }
+
+                            IconButton(onClick = {
+                                if (onToggleRightPanel != null) {
+                                    onToggleRightPanel()
+                                } else {
+                                    detailsBottomSheetTab = 0
+                                    showDetailsBottomSheet = true
+                                }
+                            }) {
+                                SidePanelIcon(
+                                    tint = if (isPanelHighlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    )
+                }
             },
-            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             modifier = modifier.fillMaxSize()
         ) { innerPadding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = innerPadding.calculateTopPadding())
-                    .navigationBarsPadding()
-                    .imePadding()
+                    .then(
+                        if (isWideScreen) {
+                            Modifier.windowInsetsPadding(
+                                WindowInsets.ime.union(WindowInsets.navigationBars).only(WindowInsetsSides.Bottom)
+                            )
+                        } else {
+                            Modifier
+                                .navigationBarsPadding()
+                                .imePadding()
+                        }
+                    )
             ) {
                 Box(
                     modifier = Modifier
@@ -1540,11 +1748,7 @@ fun ChatScreen(
                                         ChatBubble(
                                             message = message,
                                             verboseThinking = verboseThinking,
-                                            onOpenFile = { path ->
-                                                fileToOpenInEditor = path
-                                                detailsBottomSheetTab = 3
-                                                showDetailsBottomSheet = true
-                                            },
+                                            onOpenFile = handleOpenFile,
                                             onOpenTerminal = { cmd ->
                                                 viewModel.requestOpenTerminal(cmd)
                                             },
@@ -1565,11 +1769,7 @@ fun ChatScreen(
                                             ChatBubble(
                                                 message = userMsg,
                                                 verboseThinking = verboseThinking,
-                                                onOpenFile = { path ->
-                                                    fileToOpenInEditor = path
-                                                    detailsBottomSheetTab = 3
-                                                    showDetailsBottomSheet = true
-                                                },
+                                                onOpenFile = handleOpenFile,
                                                 onOpenTerminal = { cmd ->
                                                     viewModel.requestOpenTerminal(cmd)
                                                 },
@@ -1586,11 +1786,7 @@ fun ChatScreen(
                                         ChatBubble(
                                             message = message,
                                             verboseThinking = verboseThinking,
-                                            onOpenFile = { path ->
-                                                fileToOpenInEditor = path
-                                                detailsBottomSheetTab = 3
-                                                showDetailsBottomSheet = true
-                                            },
+                                            onOpenFile = handleOpenFile,
                                             onOpenTerminal = { cmd ->
                                                 viewModel.requestOpenTerminal(cmd)
                                             },
@@ -1605,11 +1801,7 @@ fun ChatScreen(
                                         ChatBubble(
                                             message = message,
                                             verboseThinking = verboseThinking,
-                                            onOpenFile = { path ->
-                                                fileToOpenInEditor = path
-                                                detailsBottomSheetTab = 3
-                                                showDetailsBottomSheet = true
-                                            },
+                                            onOpenFile = handleOpenFile,
                                             onOpenTerminal = { cmd ->
                                                 viewModel.requestOpenTerminal(cmd)
                                             },
@@ -1671,7 +1863,7 @@ fun ChatScreen(
                     onSecurityPresetChange = { preset -> viewModel.setSecurityPreset(context, preset) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 6.dp)
+                        .padding(bottom = if (isWideScreen) 2.dp else 6.dp)
                 )
             }
         }
@@ -1866,6 +2058,7 @@ fun ChatScreen(
             viewModel = viewModel,
             initialTab = detailsBottomSheetTab,
             initialFileToOpen = fileToOpenInEditor,
+            onInitialFileConsumed = { fileToOpenInEditor = null },
             onDismissRequest = {
                 showDetailsBottomSheet = false
                 fileToOpenInEditor = null
@@ -1927,7 +2120,10 @@ fun SidePanelIcon(
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     modifier: Modifier = Modifier.size(20.dp)
 ) {
-    androidx.compose.foundation.Canvas(modifier = modifier) {
+    val toggleDesc = stringResource(R.string.nav_side_panel_toggle)
+    androidx.compose.foundation.Canvas(
+        modifier = modifier.semantics { contentDescription = toggleDesc }
+    ) {
         val strokeWidth = 1.8.dp.toPx()
         val cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx(), 3.dp.toPx())
         val padding = 2.dp.toPx()

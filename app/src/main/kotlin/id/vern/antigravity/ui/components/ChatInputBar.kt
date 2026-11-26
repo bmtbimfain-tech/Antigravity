@@ -21,6 +21,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -93,6 +94,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -731,10 +733,15 @@ fun ChatInputBar(
             }
         }
 
+        val isCompactLandscape = LocalConfiguration.current.screenHeightDp < 430
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 6.dp),
+                .padding(
+                    horizontal = if (isCompactLandscape) 10.dp else 14.dp,
+                    vertical = if (isCompactLandscape) 3.dp else 6.dp
+                ),
             contentAlignment = Alignment.Center
         ) {
             val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -835,7 +842,10 @@ fun ChatInputBar(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .padding(
+                        horizontal = if (isCompactLandscape) 12.dp else 14.dp,
+                        vertical = if (isCompactLandscape) 5.dp else 8.dp
+                    )
             ) {
 
                 AnimatedVisibility(visible = attachedFiles.isNotEmpty()) {
@@ -888,7 +898,10 @@ fun ChatInputBar(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 28.dp, max = 120.dp),
+                        .heightIn(
+                            min = if (isCompactLandscape) 24.dp else 28.dp,
+                            max = if (isCompactLandscape) 72.dp else 120.dp
+                        ),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     if (inputText.isEmpty()) {
@@ -898,6 +911,8 @@ fun ChatInputBar(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                                 fontSize = 12.5.sp
                             ),
+                            maxLines = if (isCompactLandscape) 1 else 2,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(start = 2.dp)
                         )
                     }
@@ -914,7 +929,7 @@ fun ChatInputBar(
                         ),
                         cursorBrush = SolidColor(AntigravityBlue),
                         singleLine = false,
-                        maxLines = 5,
+                        maxLines = if (isCompactLandscape) 3 else 5,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                         keyboardActions = KeyboardActions(
                             onSend = {
@@ -931,81 +946,86 @@ fun ChatInputBar(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(if (isCompactLandscape) 3.dp else 6.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val availableForPills = (maxWidth - 112.dp).coerceAtLeast(110.dp)
+                    val modelMaxW = (availableForPills * 0.58f).coerceIn(70.dp, 195.dp)
+                    val securityMaxW = (availableForPills * 0.42f).coerceIn(58.dp, 115.dp)
 
-                    val canAddMoreAttachments = attachedFiles.size < 5
-                    Box(
-                        modifier = Modifier
-                            .requiredSize(32.dp)
-                            .clip(CircleShape)
-                            .clickable(enabled = canAddMoreAttachments) { onAttachFileClick() },
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = stringResource(R.string.chat_attachment_add),
-                            tint = if (canAddMoreAttachments) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
 
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    val pillText = when {
-                        selectedModel.isBlank() -> stringResource(R.string.chat_model_select)
-                        thinkingBudget.isNotBlank() -> "$selectedModel $thinkingBudget"
-                        else -> selectedModel
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier
-                            .widthIn(max = 135.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .clickable { onModelSelectorClick() }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                        val canAddMoreAttachments = attachedFiles.size < 5
+                        Box(
+                            modifier = Modifier
+                                .requiredSize(32.dp)
+                                .clip(CircleShape)
+                                .clickable(enabled = canAddMoreAttachments) { onAttachFileClick() },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = pillText,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = 11.sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
                             Icon(
-                                imageVector = Icons.Default.KeyboardArrowUp,
-                                contentDescription = stringResource(R.string.chat_model_select),
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                imageVector = Icons.Default.Add,
+                                contentDescription = stringResource(R.string.chat_attachment_add),
+                                tint = if (canAddMoreAttachments) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
-                    }
 
-                    Spacer(modifier = Modifier.weight(1f))
+                        Spacer(modifier = Modifier.width(4.dp))
 
-                    Box {
+                        val pillText = when {
+                            selectedModel.isBlank() -> stringResource(R.string.chat_model_select)
+                            thinkingBudget.isNotBlank() -> "$selectedModel $thinkingBudget"
+                            else -> selectedModel
+                        }
+
                         Surface(
                             shape = RoundedCornerShape(14.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                             modifier = Modifier
-                                .widthIn(max = 105.dp)
+                                .widthIn(max = modelMaxW)
                                 .clip(RoundedCornerShape(14.dp))
-                                .clickable { showSecurityMenu = !showSecurityMenu }
+                                .clickable { onModelSelectorClick() }
                         ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = pillText,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                    contentDescription = stringResource(R.string.chat_model_select),
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        Box {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier
+                                    .widthIn(max = securityMaxW)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { showSecurityMenu = !showSecurityMenu }
+                            ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
@@ -1217,6 +1237,7 @@ fun ChatInputBar(
                                 modifier = Modifier.size(16.dp)
                             )
                         }
+                    }
                     }
                 }
             }

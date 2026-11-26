@@ -1,5 +1,7 @@
 package id.vern.antigravity.ui.components
 
+import id.vern.antigravity.util.ExternalFileOpener
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -196,7 +198,9 @@ fun CodeEditor(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(
-                    modifier = Modifier.weight(1f, fill = false)
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 6.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically
@@ -207,7 +211,8 @@ fun CodeEditor(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (isDirty) {
                             Spacer(modifier = Modifier.width(4.dp))
@@ -229,7 +234,8 @@ fun CodeEditor(
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
                 ) {
                     if (isPreviewable) {
                         Button(
@@ -375,11 +381,8 @@ fun CodeEditor(
                                         webViewClient = object : WebViewClient() {
                                             override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
                                                 val url = request?.url?.toString() ?: return false
-                                                if (url.startsWith("http://") || url.startsWith("https://")) {
-                                                    try {
-                                                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                                        return true
-                                                    } catch (e: Exception) {}
+                                                if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file://")) {
+                                                    return ExternalFileOpener.openUrlOrFile(ctx, url)
                                                 }
                                                 return false
                                             }

@@ -174,6 +174,10 @@
     <string name="about_repo_desc">Native Android client for Google Antigravity</string>
     <string name="about_contrib_vern_title">Vern (KuatoDev)</string>
     <string name="about_contrib_vern_desc">Android application architecture, native Kotlin implementation, Jetpack Compose UI, and Google OAuth flow.</string>
+    <string name="about_contrib_irsyad_title">Muhamad Irsyad Al Bana (@irsyadbana31)</string>
+    <string name="about_contrib_irsyad_desc">ACP live thought streaming, Cloud Code quota sync, native FileProvider opener, and completion notifications.</string>
+    <string name="about_contrib_douglas_title">Douglas (@douglasmidiacerta)</string>
+    <string name="about_contrib_douglas_desc">Live agent execution status in Android foreground notifications and Portuguese localization.</string>
     <string name="about_contrib_werdik_title">Werdik (werdio325-png)</string>
     <string name="about_contrib_werdik_desc">Android userspace environment (env/), pkg package manager (Bash/AWK), and agy-daemon scheduler.</string>
     <string name="about_contrib_termux_title">Termux Project</string>
@@ -396,6 +400,12 @@
     <string name="notification_channel_desc">Antigravity background executor and process supervisor</string>
     <string name="notification_engine_active">Antigravity Active</string>
     <string name="notification_engine_running">Antigravity Engine Running</string>
+    <string name="notification_agent_working">Agent working…</string>
+    <string name="notification_agent_command">Running: %1$s</string>
+    <string name="notification_agent_responding">Writing response…</string>
+    <string name="notification_agent_edit">Editing: %1$s</string>
+    <string name="notification_agent_read">Reading: %1$s</string>
+    <string name="notification_agent_search">Searching: %1$s</string>
     <string name="notification_action_stop">Stop</string>
     <string name="notification_action_restart">Restart</string>
 
@@ -643,5 +653,32 @@
     <string name="model_toast_requires_pro">%1$s requires a Google AI Pro subscription</string>
     <string name="model_toast_requires_ultra">%1$s requires a Google AI Ultra subscription</string>
     <string name="workspace_label">Workspace: %1$s</string>
+    <string name="agent_done_notification_channel_name">Agent Responses</string>
+    <string name="agent_done_notification_channel_desc">Alerts when Antigravity finishes thinking in the background</string>
+    <string name="agent_done_notification_title">Antigravity finished</string>
+    <string name="agent_done_notification_title_duration">Antigravity finished · %1$s</string>
+    <string name="agent_error_notification_title">Antigravity · Error</string>
+    <string name="settings_notify_on_completion_title">Notify when finished</string>
+    <string name="settings_notify_on_completion_desc">Send a notification when Antigravity finishes responding while in the background or screen is off.</string>
+    <string name="file_opener_not_found">File not found: %1$s</string>
+    <string name="file_opener_cannot_open">Cannot open: %1$s</string>
+    <string name="file_opener_cannot_share">Cannot share file: %1$s</string>
+    <string name="file_opener_no_app">No app available to open: %1$s</string>
+    <string name="nav_drawer_toggle">Conversations &amp; Projects</string>
+    <string name="nav_side_panel_toggle">Toggle workspace panel</string>
+    <string name="editor_select_file_prompt">Select a file from the explorer to open in the editor</string>
+    <string name="editor_empty_title">No open files in editor</string>
+    <string name="editor_empty_subtitle">Open the Files tab to select a file from your workspace.</string>
+    <string name="agent_review_header_count">Review (%1$d/%2$d)</string>
+    <string name="agent_review_filter_all">All</string>
+    <string name="agent_review_filter_kotlin">Kotlin</string>
+    <string name="agent_review_filter_config">Config</string>
+    <string name="agent_review_filter_markdown">Markdown</string>
+    <string name="agent_review_diff_refreshed">Workspace diff refreshed</string>
+    <string name="agent_review_expand_all">Expand All</string>
+    <string name="agent_review_collapse_all">Collapse All</string>
+    <string name="agent_review_empty_search">No matching modified files found.</string>
+    <string name="agent_review_empty">No modified files in workspace to review.</string>
+    <string name="topbar_core_update_short">Update</string>
 </resources>
 

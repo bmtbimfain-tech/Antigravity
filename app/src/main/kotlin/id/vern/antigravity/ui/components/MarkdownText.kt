@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.vern.antigravity.R
 import id.vern.antigravity.ui.theme.AntigravityBlue
+import id.vern.antigravity.util.ExternalFileOpener
 
 sealed class MarkdownElement {
     data class Heading(val level: Int, val text: String) : MarkdownElement()
@@ -254,13 +255,7 @@ fun FormattedText(
             modifier = modifier,
             onClick = { offset ->
                 annotatedString.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { annotation ->
-                    try {
-                        val uri = Uri.parse(annotation.item)
-                        val intent = Intent(Intent.ACTION_VIEW, uri)
-                        context.startActivity(intent)
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "Cannot open: ${annotation.item}", Toast.LENGTH_SHORT).show()
-                    }
+                    ExternalFileOpener.openUrlOrFile(context, annotation.item)
                 }
             }
         )

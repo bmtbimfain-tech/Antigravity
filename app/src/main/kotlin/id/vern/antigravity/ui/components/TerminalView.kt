@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.vern.antigravity.R
 import id.vern.antigravity.executor.EngineExecutor
+import id.vern.antigravity.service.ForegroundNotification
 import id.vern.antigravity.service.TerminalLine
 import id.vern.antigravity.service.TerminalSessionManager
 import id.vern.antigravity.ui.theme.AntigravityGreen
@@ -174,8 +175,10 @@ fun TerminalView(
         safeRequestFocus()
 
         coroutineScope.launch {
-            EngineExecutor.executeCommandWithUpdates(context, trimmed, TerminalSessionManager.currentWorkingDir) { line, isErr, isUpdate ->
-                TerminalSessionManager.appendLine(line, isErr, isUpdate)
+            ForegroundNotification.trackCommand(context, trimmed) {
+                EngineExecutor.executeCommandWithUpdates(context, trimmed, TerminalSessionManager.currentWorkingDir) { line, isErr, isUpdate ->
+                    TerminalSessionManager.appendLine(line, isErr, isUpdate)
+                }
             }
             withContext(Dispatchers.Main) {
                 isRunning = false

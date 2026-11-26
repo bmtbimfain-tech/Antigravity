@@ -70,6 +70,8 @@ Jika Antigravity for Android bermanfaat untuk Anda dan ingin mendukung pengemban
 
 ## Credits
 
+- **[Muhamad Irsyad Al Bana (irsyadbana31)](https://github.com/irsyadbana31)**: Streaming pemikiran langsung ACP, sinkronisasi kuota Cloud Code, pembuka berkas FileProvider, dan notifikasi penyelesaian.
+- **[Douglas (douglasmidiacerta)](https://github.com/douglasmidiacerta)**: Status eksekusi agen pada notifikasi latar depan dan lokalisasi bahasa Portugis.
 - **[Werdik (werdio325-png)](https://github.com/werdio325-png)** — `pkg`, `agy-daemon`, dan script userspace.
 - **[Termux](https://github.com/termux)** — Base rootfs ARM64 dan `libtermux-exec`.
 - **[Google DeepMind](https://deepmind.google)** — Binary inti `language_server` Antigravity.

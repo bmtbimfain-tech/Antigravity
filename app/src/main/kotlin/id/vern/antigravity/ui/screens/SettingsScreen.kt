@@ -961,6 +961,7 @@ fun GeneralSettingsPage(
     val currentSubPage = pageStack.last()
 
     val queuedMode by viewModel.queuedMessagesMode.collectAsStateWithLifecycle()
+    val notifyOnCompletion by viewModel.notifyOnCompletion.collectAsStateWithLifecycle()
     val securityPreset by viewModel.securityPreset.collectAsStateWithLifecycle()
     val planReviewPolicy by viewModel.planReviewPolicy.collectAsStateWithLifecycle()
     val permissionState by viewModel.permissionState.collectAsStateWithLifecycle()
@@ -1040,6 +1041,34 @@ fun GeneralSettingsPage(
                                         }
                                     }
                                 }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                    Text(
+                                        text = stringResource(R.string.settings_notify_on_completion_title),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.settings_notify_on_completion_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = notifyOnCompletion,
+                                    onCheckedChange = { viewModel.setNotifyOnCompletion(context, it) },
+                                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AntigravityBlue)
+                                )
                             }
                         }
                     }
@@ -1953,15 +1982,15 @@ fun ModelsAndUsageSettingsPage(
                             val pct = matchingAvail?.percentage
                                 ?: getModelQuotaPercentage(cli.cliId, userQuotaSummary).first
                                 ?: getModelQuotaPercentage(cli.displayName, userQuotaSummary).first
-                            val isArgon = cli.cliId.contains("argon", ignoreCase = true) || cli.displayName.contains("argon", ignoreCase = true)
-                            val resetT = matchingAvail?.resetTime ?: (
-                                if (isArgon) {
-                                    userQuotaSummary?.groups?.firstOrNull { it.displayName.contains("argon", ignoreCase = true) }?.buckets?.firstOrNull()?.resetTime
-                                        ?: userQuotaSummary?.groups?.firstOrNull { it.displayName.contains("gemini", ignoreCase = true) && !it.displayName.contains("argon", ignoreCase = true) }?.buckets?.firstOrNull { it.window.equals("weekly", ignoreCase = true) || it.bucketId.contains("weekly", ignoreCase = true) }?.resetTime
-                                } else {
-                                    userQuotaSummary?.groups?.firstOrNull { it.displayName.contains("gemini", ignoreCase = true) && !it.displayName.contains("argon", ignoreCase = true) }?.buckets?.firstOrNull()?.resetTime
+                            val resetT = matchingAvail?.resetTime ?: run {
+                                val ownerGroup = userQuotaSummary?.groups?.firstOrNull { g ->
+                                    g.modelIds.contains(cli.cliId) ||
+                                    g.sharedModels.any { shared ->
+                                        id.vern.antigravity.data.AvailableModelInfo.normalizeForMatch(shared) == id.vern.antigravity.data.AvailableModelInfo.normalizeForMatch(cli.displayName)
+                                    }
                                 }
-                            )
+                                ownerGroup?.buckets?.firstOrNull()?.resetTime
+                            }
                             val availStatus = matchingAvail?.availability ?: ModelAvailability.AVAILABLE
                             AvailableModelInfo(
                                 modelId = cli.cliId,
@@ -5479,26 +5508,51 @@ fun AboutSettingsPage(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     val contributors = listOf(
-                        Pair(R.string.about_contrib_vern_title, R.string.about_contrib_vern_desc),
-                        Pair(R.string.about_contrib_werdik_title, R.string.about_contrib_werdik_desc),
-                        Pair(R.string.about_contrib_termux_title, R.string.about_contrib_termux_desc),
-                        Pair(R.string.about_contrib_deepmind_title, R.string.about_contrib_deepmind_desc)
+                        Triple(R.string.about_contrib_vern_title, R.string.about_contrib_vern_desc, "https://github.com/KuatoDev"),
+                        Triple(R.string.about_contrib_irsyad_title, R.string.about_contrib_irsyad_desc, "https://github.com/irsyadbana31"),
+                        Triple(R.string.about_contrib_douglas_title, R.string.about_contrib_douglas_desc, "https://github.com/douglasmidiacerta"),
+                        Triple(R.string.about_contrib_werdik_title, R.string.about_contrib_werdik_desc, "https://github.com/werdio325-png"),
+                        Triple(R.string.about_contrib_termux_title, R.string.about_contrib_termux_desc, "https://github.com/termux"),
+                        Triple(R.string.about_contrib_deepmind_title, R.string.about_contrib_deepmind_desc, "https://deepmind.google")
                     )
 
-                    contributors.forEachIndexed { index, (titleRes, descRes) ->
+                    contributors.forEachIndexed { index, (titleRes, descRes, profileUrl) ->
                         if (index > 0) {
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f),
-                                modifier = Modifier.padding(vertical = 8.dp)
+                                modifier = Modifier.padding(vertical = 6.dp)
                             )
                         }
-                        Column {
-                            Text(
-                                text = stringResource(titleRes),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(profileUrl))
+                                    context.startActivity(intent)
+                                }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(titleRes),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                    contentDescription = stringResource(R.string.common_open),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = stringResource(descRes),

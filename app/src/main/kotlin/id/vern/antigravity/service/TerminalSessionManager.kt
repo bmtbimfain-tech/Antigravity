@@ -230,8 +230,10 @@ object TerminalSessionManager {
 
         activeJob?.cancel()
         val job = scope.launch {
-            val exitCode = EngineExecutor.executeCommandWithUpdates(context, trimmed, effectiveCwd) { line, isErr, isUpdate ->
-                appendLine(line, isErr, isUpdate)
+            val exitCode = ForegroundNotification.trackCommand(context, trimmed) {
+                EngineExecutor.executeCommandWithUpdates(context, trimmed, effectiveCwd) { line, isErr, isUpdate ->
+                    appendLine(line, isErr, isUpdate)
+                }
             }
             isRunning.value = false
             onFinished?.invoke(exitCode)
