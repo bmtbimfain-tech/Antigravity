@@ -8,7 +8,7 @@ on:
       build_type:
         description: 'Tipe APK (debug = tanpa keystore, release = butuh secrets keystore)'
         required: true
-        default: 'debug'
+        default: 'release'
         type: choice
         options:
           - debug
@@ -43,15 +43,17 @@ jobs:
 
       - name: Setup Signing Keystore
         env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > release-keystore.jks
+          RAW_B64="${SIGNING_KEYSTORE_BASE64:-$KEYSTORE_BASE64}"
+          if [ -n "$RAW_B64" ]; then
+            echo "$RAW_B64" | tr -d '\n\r ' | base64 -d > release-keystore.jks
             echo "HAS_KEYSTORE=true" >> "$GITHUB_ENV"
             echo "Release keystore ready."
           else
             echo "HAS_KEYSTORE=false" >> "$GITHUB_ENV"
-            echo "KEYSTORE_BASE64 secret is empty. Release signing disabled."
+            echo "SIGNING_KEYSTORE_BASE64 secret is empty. Release signing disabled."
           fi
 
       - name: Validate Release Secrets (Manual Release Trigger)
