@@ -5,6 +5,7 @@ GitHub issue/PR polling, and authenticated local HTTP webhooks.
 """
 
 import os
+import re
 import time
 import json
 import hmac
@@ -22,8 +23,10 @@ from .executor import (
 
 
 def check_github_repo(trigger_info, endpoint_type="pulls"):
-    repo = trigger_info.get("repo")
-    if not repo:
+    repo = str(trigger_info.get("repo") or "").strip()
+    if not re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo):
+        return False
+    if endpoint_type not in ("pulls", "issues"):
         return False
     token = os.environ.get("GITHUB_TOKEN") or trigger_info.get("token")
     url = f"https://api.github.com/repos/{repo}/{endpoint_type}?state=open"
@@ -33,7 +36,7 @@ def check_github_repo(trigger_info, endpoint_type="pulls"):
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            data = json.loads(resp.read(2 * 1024 * 1024).decode("utf-8", errors="replace"))
 
         last_count_key = f"last_{endpoint_type}_count"
         last_count = trigger_info.get(last_count_key)
@@ -88,6 +91,7 @@ def check_battery_condition(trigger_info):
 def start_webhook_listener(port):
     class WebhookHandler(BaseHTTPRequestHandler):
         MAX_BODY_BYTES = 64 * 1024
+        timeout = 10
 
         def reply(self, status, body):
             self.send_response(status)
@@ -117,9 +121,13 @@ def start_webhook_listener(port):
             for task in tasks:
                 trigger = task.get("trigger", {})
                 expected = trigger.get("token", "")
+                try:
+                    task_port = int(trigger.get("port", 45199))
+                except (TypeError, ValueError):
+                    continue
                 if (task.get("enabled", True)
                         and trigger.get("type") == "webhook"
-                        and int(trigger.get("port", 45199)) == port
+                        and task_port == port
                         and expected
                         and hmac.compare_digest(str(provided), str(expected))):
                     authorized.append(task)

@@ -11,11 +11,16 @@ import id.vern.antigravity.executor.EngineExecutor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+
+private val terminalLineIdSeq = AtomicLong(1L)
 
 data class TerminalLine(
-    val id: Long = System.nanoTime(),
+    val id: Long = terminalLineIdSeq.getAndIncrement(),
     val text: String,
     val isError: Boolean = false,
     val isCommand: Boolean = false
@@ -23,6 +28,8 @@ data class TerminalLine(
 
 object TerminalSessionManager {
     const val AGY_SESSION_NAME = "AGY Live"
+    private const val MAX_SCROLLBACK_LINES = 5000
+    private const val MAX_HISTORY_SIZE = 500
     val lines = mutableStateListOf<TerminalLine>()
     val history = mutableStateListOf<String>()
     val historyIndex = mutableIntStateOf(-1)
@@ -34,7 +41,7 @@ object TerminalSessionManager {
     val sessionBuffers = mutableMapOf<String, MutableList<TerminalLine>>()
     private var initialized = false
     private var activeJob: Job? = null
-    private val scope = CoroutineScope(Dispatchers.Main + Job())
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun initIfNeeded() {
@@ -128,8 +135,8 @@ object TerminalSessionManager {
                 } else {
                     buf.add(TerminalLine(text = clean, isError = isError))
                 }
-                if (buf.size > 2000) {
-                    buf.subList(0, buf.size - 2000).clear()
+                if (buf.size > MAX_SCROLLBACK_LINES) {
+                    buf.subList(0, buf.size - MAX_SCROLLBACK_LINES).clear()
                 }
 
                 if (isUpdate) {
@@ -141,16 +148,40 @@ object TerminalSessionManager {
                 } else {
                     lines.add(TerminalLine(text = clean, isError = isError))
                 }
-                if (lines.size > 50000) {
-                    lines.removeRange(0, lines.size - 50000)
+                if (lines.size > MAX_SCROLLBACK_LINES) {
+                    lines.removeRange(0, lines.size - MAX_SCROLLBACK_LINES)
                 }
             } catch (_: Exception) {}
         }
     }
 
-    @Volatile
-    private var isAgyFlushPending = false
+    private val isAgyFlushPending = AtomicBoolean(false)
     private val pendingAgyLines = java.util.concurrent.ConcurrentLinkedQueue<TerminalLine>()
+
+    private fun scheduleAgyFlush() {
+        if (!isAgyFlushPending.compareAndSet(false, true)) return
+        mainHandler.postDelayed({
+            isAgyFlushPending.set(false)
+            try {
+                if (currentSessionName.value == AGY_SESSION_NAME) {
+                    var count = 0
+                    while (!pendingAgyLines.isEmpty() && count < 200) {
+                        val l = pendingAgyLines.poll() ?: break
+                        lines.add(l)
+                        count++
+                    }
+                    if (lines.size > MAX_SCROLLBACK_LINES) {
+                        lines.removeRange(0, lines.size - MAX_SCROLLBACK_LINES)
+                    }
+                    if (!pendingAgyLines.isEmpty()) {
+                        scheduleAgyFlush()
+                    }
+                } else {
+                    pendingAgyLines.clear()
+                }
+            } catch (_: Exception) {}
+        }, 30L)
+    }
 
     fun appendAgyLine(text: String, isError: Boolean = false, isCommand: Boolean = false) {
         val clean = cleanAnsi(text)
@@ -162,8 +193,8 @@ object TerminalSessionManager {
             synchronized(sessionBuffers) {
                 val buf = sessionBuffers.getOrPut(AGY_SESSION_NAME) { mutableListOf() }
                 buf.add(item)
-                if (buf.size > 50000) {
-                    buf.subList(0, buf.size - 50000).clear()
+                if (buf.size > MAX_SCROLLBACK_LINES) {
+                    buf.subList(0, buf.size - MAX_SCROLLBACK_LINES).clear()
                 }
             }
             if (currentSessionName.value == AGY_SESSION_NAME) {
@@ -171,30 +202,8 @@ object TerminalSessionManager {
             }
         }
 
-        if (currentSessionName.value == AGY_SESSION_NAME && !isAgyFlushPending) {
-            isAgyFlushPending = true
-            mainHandler.postDelayed({
-                isAgyFlushPending = false
-                try {
-                    if (currentSessionName.value == AGY_SESSION_NAME) {
-                        var count = 0
-                        while (!pendingAgyLines.isEmpty() && count < 200) {
-                            val l = pendingAgyLines.poll() ?: break
-                            lines.add(l)
-                            count++
-                        }
-                        if (lines.size > 50000) {
-                            lines.removeRange(0, lines.size - 50000)
-                        }
-                        if (!pendingAgyLines.isEmpty()) {
-                            isAgyFlushPending = true
-                            mainHandler.postDelayed({ appendAgyLine("") }, 30L)
-                        }
-                    } else {
-                        pendingAgyLines.clear()
-                    }
-                } catch (_: Exception) {}
-            }, 30L)
+        if (currentSessionName.value == AGY_SESSION_NAME) {
+            scheduleAgyFlush()
         }
     }
 
@@ -221,23 +230,39 @@ object TerminalSessionManager {
         }
 
         val effectiveCwd = workingDir ?: currentWorkingDir
-        lines.add(TerminalLine(text = "$ $trimmed", isCommand = true))
-        sessionBuffers[currentSessionName.value]?.add(TerminalLine(text = "$ $trimmed", isCommand = true))
+        val cmdLine = TerminalLine(text = "$ $trimmed", isCommand = true)
+        lines.add(cmdLine)
+        synchronized(sessionBuffers) {
+            sessionBuffers.getOrPut(currentSessionName.value) { mutableListOf() }.add(cmdLine)
+        }
         history.add(trimmed)
+        if (history.size > MAX_HISTORY_SIZE) {
+            history.removeRange(0, history.size - MAX_HISTORY_SIZE)
+        }
         historyIndex.intValue = history.size
         commandInput.value = ""
         isRunning.value = true
 
         activeJob?.cancel()
+        var currentJob: Job? = null
         val job = scope.launch {
-            val exitCode = ForegroundNotification.trackCommand(context, trimmed) {
-                EngineExecutor.executeCommandWithUpdates(context, trimmed, effectiveCwd) { line, isErr, isUpdate ->
-                    appendLine(line, isErr, isUpdate)
+            try {
+                val exitCode = ForegroundNotification.trackCommand(context, trimmed) {
+                    EngineExecutor.executeCommandWithUpdates(context, trimmed, effectiveCwd) { line, isErr, isUpdate ->
+                        appendLine(line, isErr, isUpdate)
+                    }
+                }
+                if (activeJob === currentJob) {
+                    isRunning.value = false
+                }
+                onFinished?.invoke(exitCode)
+            } finally {
+                if (activeJob === currentJob) {
+                    isRunning.value = false
                 }
             }
-            isRunning.value = false
-            onFinished?.invoke(exitCode)
         }
+        currentJob = job
         activeJob = job
         return job
     }

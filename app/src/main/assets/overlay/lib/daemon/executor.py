@@ -38,6 +38,9 @@ STOP_EVENT = threading.Event()
 TASK_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="agy_worker")
 RUNNING_JOBS = set()
 RUNNING_LOCK = threading.Lock()
+TASKS_LOCK = threading.RLock()
+LOG_LOCK = threading.Lock()
+MAX_LOG_BYTES = 2 * 1024 * 1024
 
 
 def log(msg):
@@ -45,9 +48,15 @@ def log(msg):
     formatted = f"[{ts}] {msg}"
     print(formatted, flush=True)
     try:
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(formatted + "\n")
+        with LOG_LOCK:
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            if os.path.isfile(LOG_FILE) and os.path.getsize(LOG_FILE) > MAX_LOG_BYTES:
+                try:
+                    os.replace(LOG_FILE, LOG_FILE + ".1")
+                except OSError:
+                    pass
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(formatted + "\n")
     except Exception:
         pass
 
@@ -58,28 +67,38 @@ def notify(title, message, tag=None):
     if tag:
         cmd.extend(["--tag", tag])
     try:
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
     except Exception as e:
         log(f"Notification failed: {e}")
 
 
 def load_tasks():
-    if not os.path.isfile(TASKS_FILE):
-        return []
-    try:
-        with open(TASKS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        log(f"Error loading tasks: {e}")
-        return []
+    with TASKS_LOCK:
+        if not os.path.isfile(TASKS_FILE):
+            return []
+        try:
+            with open(TASKS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            log(f"Error loading tasks: {e}")
+            return []
 
 
 def save_tasks(tasks):
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    tmp_path = TASKS_FILE + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(tasks, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, TASKS_FILE)
+    with TASKS_LOCK:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        tmp_path = f"{TASKS_FILE}.{os.getpid()}.{threading.get_ident()}.tmp"
+        try:
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(tasks, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, TASKS_FILE)
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
 
 def wake_antigravity_app():
@@ -114,7 +133,14 @@ def run_task_worker(task):
 
     with RUNNING_LOCK:
         RUNNING_JOBS.add(task_id)
+    try:
+        _run_task_worker_body(task, task_id, name, command, prompt, project, convo_id, wake_app)
+    finally:
+        with RUNNING_LOCK:
+            RUNNING_JOBS.discard(task_id)
 
+
+def _run_task_worker_body(task, task_id, name, command, prompt, project, convo_id, wake_app):
     log(f"Worker started for task [{name}] (ID: {task_id})")
 
     if not command and prompt:
@@ -173,20 +199,18 @@ def run_task_worker(task):
         wake_antigravity_app()
 
     try:
-        all_tasks = load_tasks()
-        for t in all_tasks:
-            if t.get("id") == task_id:
-                t["last_run_status"] = "success" if success else "failed"
-                t["last_run_duration"] = duration
-                t["last_run_ts"] = time.time()
-                t["last_output"] = output[:1000]
-                break
-        save_tasks(all_tasks)
+        with TASKS_LOCK:
+            all_tasks = load_tasks()
+            for t in all_tasks:
+                if t.get("id") == task_id:
+                    t["last_run_status"] = "success" if success else "failed"
+                    t["last_run_duration"] = duration
+                    t["last_run_ts"] = time.time()
+                    t["last_output"] = output[:1000]
+                    break
+            save_tasks(all_tasks)
     except Exception as e:
         log(f"Error saving task completion status: {e}")
-
-    with RUNNING_LOCK:
-        RUNNING_JOBS.discard(task_id)
 
 
 def execute_action_async(task):
@@ -195,4 +219,10 @@ def execute_action_async(task):
         if task_id in RUNNING_JOBS:
             log(f"Task [{task_id}] already running. Skipping overlap.")
             return
-    TASK_EXECUTOR.submit(run_task_worker, task)
+        RUNNING_JOBS.add(task_id)
+    try:
+        TASK_EXECUTOR.submit(run_task_worker, task)
+    except Exception as e:
+        with RUNNING_LOCK:
+            RUNNING_JOBS.discard(task_id)
+        log(f"Failed to submit task [{task_id}]: {e}")

@@ -1,6 +1,7 @@
 package id.vern.antigravity.service
 
 import android.content.Context
+import android.system.Os
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -70,6 +71,26 @@ object PermissionConfigService {
         return list
     }
 
+    private fun writePrivateAtomic(target: File, content: String) {
+        target.parentFile?.mkdirs()
+        val tmp = File(target.parentFile, "${target.name}.tmp")
+        tmp.writeText(content, Charsets.UTF_8)
+        tmp.setReadable(false, false)
+        tmp.setReadable(true, true)
+        tmp.setWritable(false, false)
+        tmp.setWritable(true, true)
+        try { Os.chmod(tmp.absolutePath, 384) } catch (_: Exception) {}
+        if (!tmp.renameTo(target)) {
+            target.writeText(content, Charsets.UTF_8)
+            try { tmp.delete() } catch (_: Exception) {}
+        }
+        target.setReadable(false, false)
+        target.setReadable(true, true)
+        target.setWritable(false, false)
+        target.setWritable(true, true)
+        try { Os.chmod(target.absolutePath, 384) } catch (_: Exception) {}
+    }
+
     private fun findPrimaryConfigFile(context: Context): File {
         val candidates = getCandidateFiles(context)
         for (f in candidates) {
@@ -133,14 +154,12 @@ object PermissionConfigService {
 
                 val userSettings = root.optJSONObject("userSettings") ?: JSONObject().also { root.put("userSettings", it) }
                 userSettings.put("autoExecutionPolicy", state.autoExecutionPolicy)
-                userSettings.put("enableTerminalSandbox", false)
+                userSettings.put("enableTerminalSandbox", state.enableTerminalSandbox)
                 userSettings.put("nonWorkspaceFileAccessPolicy", state.nonWorkspaceFileAccessPolicy)
                 userSettings.put("planReviewPolicy", state.planReviewPolicy)
                 userSettings.put("securityPreset", state.securityPreset)
 
-                settingsFile.writeText(root.toString(2), Charsets.UTF_8)
-                settingsFile.setReadable(true, false)
-                settingsFile.setWritable(true, false)
+                writePrivateAtomic(settingsFile, root.toString(2))
             } catch (e: Exception) {}
         }
     }
@@ -257,11 +276,8 @@ object PermissionConfigService {
 
             for (target in getCandidateFiles(context)) {
                 try {
-                    target.parentFile?.mkdirs()
-                    target.writeText(formattedJson, Charsets.UTF_8)
-                    target.setReadable(true, false)
-                    target.setWritable(true, false)
-                } catch (e: Exception) {}
+                    writePrivateAtomic(target, formattedJson)
+                } catch (_: Exception) {}
             }
             syncSettingsJsonFiles(context, state)
             Log.i(TAG, "Permissions saved successfully (${state.rules.size} rules)")
