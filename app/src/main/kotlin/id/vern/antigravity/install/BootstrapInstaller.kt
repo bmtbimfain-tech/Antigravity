@@ -8,7 +8,10 @@ import android.util.Log
 import id.vern.antigravity.oauth.OAuthManager
 import id.vern.antigravity.util.AppLogger
 import id.vern.antigravity.util.NetworkDownloader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.File
@@ -40,6 +43,8 @@ object BootstrapInstaller {
     @Volatile
     var lastStackTrace: String? = null
 
+    private val installMutex = Mutex()
+
     fun prefixDir(context: Context): File = File(context.filesDir, "usr")
     fun engineDir(context: Context): File = File(context.filesDir, "engine")
     fun geminiDir(context: Context): File = File(context.filesDir, ".gemini")
@@ -64,6 +69,7 @@ object BootstrapInstaller {
         context: Context,
         onProgress: (step: String, progress: Float) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
+        installMutex.withLock {
         val filesDir = context.filesDir
         val prefix = prefixDir(context)
         val engine = engineDir(context)
@@ -115,6 +121,7 @@ object BootstrapInstaller {
             Log.i(TAG, "Antigravity Linux userspace installed successfully at $prefix")
             true
         } catch (e: Throwable) {
+            if (e is CancellationException) throw e
             val errMsg = "${e.javaClass.simpleName}: ${e.message ?: "Unknown error"}"
             val trace = e.stackTraceToString()
             lastError = errMsg
@@ -135,6 +142,7 @@ object BootstrapInstaller {
             } catch (e: Exception) {}
 
             false
+        }
         }
     }
 
@@ -298,7 +306,7 @@ object BootstrapInstaller {
                 val entryName = entry.name
                 val destFile = File(targetDir, entryName)
                 val destCanonical = destFile.canonicalPath
-                if (!destCanonical.startsWith(targetCanonical)) {
+                if (destCanonical != targetCanonical && !destCanonical.startsWith(targetCanonical + File.separator)) {
                     entry = zis.nextEntry
                     continue
                 }

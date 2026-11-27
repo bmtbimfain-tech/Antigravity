@@ -4,6 +4,7 @@ import android.content.Context
 import android.system.Os
 import id.vern.antigravity.install.BootstrapInstaller
 import id.vern.antigravity.oauth.OAuthManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -24,6 +25,8 @@ object EngineExecutor {
 
     @Volatile
     private var isGitPermissionsSet = false
+
+    private val healLock = Any()
 
     fun invalidateEnvironment() {
         isEnvironmentHealed = false
@@ -144,23 +147,37 @@ object EngineExecutor {
 
             val stdoutThread = Thread {
                 streamOutput(process.inputStream, false, onOutput)
-            }
+            }.apply { isDaemon = true }
 
             val stderrThread = Thread {
                 streamOutput(process.errorStream, true, onOutput)
-            }
+            }.apply { isDaemon = true }
 
             stdoutThread.start()
             stderrThread.start()
 
             val exitCode = try {
                 process.waitFor()
+            } catch (ce: CancellationException) {
+                try { process.destroyForcibly() } catch (_: Exception) {}
+                throw ce
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                try { process.destroyForcibly() } catch (_: Exception) {}
+                -1
             } finally {
-                try { process.outputStream.close() } catch (e: Exception) {}
+                try { process.outputStream.close() } catch (_: Exception) {}
+                if (process.isAlive) {
+                    try { process.destroyForcibly() } catch (_: Exception) {}
+                }
             }
-            stdoutThread.join(1000)
-            stderrThread.join(1000)
+            try { stdoutThread.join(1000) } catch (_: Exception) {}
+            try { stderrThread.join(1000) } catch (_: Exception) {}
+            try { process.inputStream.close() } catch (_: Exception) {}
+            try { process.errorStream.close() } catch (_: Exception) {}
             exitCode
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (e: Exception) {
             onOutput("Execution error: ${e.message}", true, false)
             -1
@@ -447,8 +464,8 @@ object EngineExecutor {
                             line?.let { onOutputLine(it, false) }
                         }
                     }
-                } catch (e: Exception) {}
-            }
+                } catch (_: Exception) {}
+            }.apply { isDaemon = true }
 
             val stderrThread = Thread {
                 try {
@@ -458,25 +475,35 @@ object EngineExecutor {
                             line?.let { onOutputLine(it, true) }
                         }
                     }
-                } catch (e: Exception) {}
-            }
+                } catch (_: Exception) {}
+            }.apply { isDaemon = true }
 
             stdoutThread.start()
             stderrThread.start()
 
             val exitCode = try {
                 process.waitFor()
-            } catch (e: Exception) {
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                -1
+            } catch (_: Exception) {
                 -1
             } finally {
-                try { process.outputStream.close() } catch (e: Exception) {}
+                try { process.outputStream.close() } catch (_: Exception) {}
             }
 
-            try { stdoutThread.join(1000) } catch (e: Exception) {}
-            try { stderrThread.join(1000) } catch (e: Exception) {}
+            try { stdoutThread.join(1000) } catch (_: Exception) {}
+            try { stderrThread.join(1000) } catch (_: Exception) {}
             return exitCode
         } finally {
-            activeAgyProcess = null
+            if (process.isAlive) {
+                try { process.destroyForcibly() } catch (_: Exception) {}
+            }
+            try { process.inputStream.close() } catch (_: Exception) {}
+            try { process.errorStream.close() } catch (_: Exception) {}
+            if (activeAgyProcess === process) {
+                activeAgyProcess = null
+            }
         }
     }
 
@@ -699,7 +726,7 @@ object EngineExecutor {
                     }
                 }
             } catch (_: Exception) {}
-        }
+        }.apply { isDaemon = true }
         stderrThread.start()
 
         var activeSessionId = ""
@@ -954,17 +981,32 @@ object EngineExecutor {
                 })
             }.toString(), false)
             0
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (_: Exception) {
             if (activeSessionId.isBlank()) ACP_UNAVAILABLE else -1
         } finally {
             try { process.outputStream.close() } catch (_: Exception) {}
             try { process.destroy() } catch (_: Exception) {}
+            try {
+                if (!process.waitFor(300, java.util.concurrent.TimeUnit.MILLISECONDS) && process.isAlive) {
+                    process.destroyForcibly()
+                }
+            } catch (_: Exception) {
+                try { if (process.isAlive) process.destroyForcibly() } catch (_: Exception) {}
+            }
+            try { process.inputStream.close() } catch (_: Exception) {}
+            try { process.errorStream.close() } catch (_: Exception) {}
             try { stderrThread.join(500) } catch (_: Exception) {}
-            activeAgyProcess = null
+            if (activeAgyProcess === process) {
+                activeAgyProcess = null
+            }
         }
     }
 
     fun healEnvironment(context: Context, force: Boolean = false) {
+        if (isEnvironmentHealed && !force) return
+        synchronized(healLock) {
         if (isEnvironmentHealed && !force) return
         try {
             val filesDir = context.filesDir
@@ -1118,10 +1160,17 @@ object EngineExecutor {
                 }
             }
 
+            val resolvContent = "nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 8.8.4.4\n"
             val resolvFile = File(filesDir, "resolv.conf")
             if (!resolvFile.exists() || resolvFile.length() == 0L) {
-                resolvFile.writeText("nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 8.8.4.4\n", Charsets.UTF_8)
+                resolvFile.writeText(resolvContent, Charsets.UTF_8)
                 resolvFile.setReadable(true, false)
+            }
+            val homeEtcResolv = File(filesDir, "home/etc/resolv.conf")
+            if (!homeEtcResolv.exists() || homeEtcResolv.length() == 0L) {
+                homeEtcResolv.parentFile?.mkdirs()
+                homeEtcResolv.writeText(resolvContent, Charsets.UTF_8)
+                homeEtcResolv.setReadable(true, false)
             }
             val hostsFile = File(filesDir, "hosts")
             if (!hostsFile.exists() || hostsFile.length() == 0L) {
@@ -1129,7 +1178,8 @@ object EngineExecutor {
                 hostsFile.setReadable(true, false)
             }
             isEnvironmentHealed = true
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
+        }
     }
 
     private suspend fun runIsolatedAgyArgs(
@@ -1220,46 +1270,65 @@ object EngineExecutor {
             return@withContext null
         }
 
-        val outputSb = StringBuilder()
+        val outputSb = StringBuffer()
         val stdoutThread = Thread {
             try {
                 BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8)).use { reader ->
                     var line: String?
                     while (reader.readLine().also { line = it } != null) {
-                        if (outputSb.isNotEmpty()) outputSb.append("\n")
-                        outputSb.append(line)
+                        if (outputSb.length < 2 * 1024 * 1024) {
+                            if (outputSb.isNotEmpty()) outputSb.append("\n")
+                            outputSb.append(line)
+                        }
                     }
                 }
             } catch (_: Exception) {}
-        }
+        }.apply { isDaemon = true }
         val stderrThread = Thread {
             try {
-                process.errorStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                process.errorStream.use { err ->
+                    val drainBuf = ByteArray(4096)
+                    while (err.read(drainBuf) != -1) {
+                        // drain stderr without unbounded memory allocation
+                    }
+                }
             } catch (_: Exception) {}
-        }
+        }.apply { isDaemon = true }
 
         stdoutThread.start()
         stderrThread.start()
         try {
-            process.outputStream.close()
-        } catch (_: Exception) {}
+            try {
+                process.outputStream.close()
+            } catch (_: Exception) {}
 
-        val finished = try {
-            process.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
-        } catch (_: Exception) {
-            false
+            val finished = try {
+                process.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            } catch (_: Exception) {
+                false
+            }
+
+            if (!finished) {
+                return@withContext null
+            }
+
+            try { stdoutThread.join(1000) } catch (_: Exception) {}
+            try { stderrThread.join(500) } catch (_: Exception) {}
+
+            val result = outputSb.toString().trim()
+            if (process.exitValue() == 0 && result.isNotBlank()) result else null
+        } finally {
+            if (process.isAlive) {
+                try { process.destroyForcibly() } catch (_: Exception) {}
+            }
+            try { process.inputStream.close() } catch (_: Exception) {}
+            try { process.errorStream.close() } catch (_: Exception) {}
         }
-
-        if (!finished) {
-            try { process.destroyForcibly() } catch (_: Exception) {}
-            return@withContext null
-        }
-
-        try { stdoutThread.join(1000) } catch (_: Exception) {}
-        try { stderrThread.join(500) } catch (_: Exception) {}
-
-        val result = outputSb.toString().trim()
-        if (process.exitValue() == 0 && result.isNotBlank()) result else null
     }
 
     suspend fun runAgySlashCommandJson(
