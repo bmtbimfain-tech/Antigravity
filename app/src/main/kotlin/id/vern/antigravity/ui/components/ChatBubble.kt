@@ -5,6 +5,10 @@ import id.vern.antigravity.util.ExternalFileOpener
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.material.icons.filled.Check
 import id.vern.antigravity.ui.theme.AntigravityGreen
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.AnnotatedString
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -1487,50 +1491,57 @@ private fun CopyActionButton(
     toastMessage: String,
     modifier: Modifier = Modifier
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
+    val composeClipboard = LocalClipboardManager.current
+    val haptic = LocalHapticFeedback.current
     var copied by remember { mutableStateOf(false) }
 
     LaunchedEffect(copied) {
         if (copied) {
-            delay(1500L)
+            delay(2500L)
             copied = false
         }
     }
 
     val copyLabel = stringResource(R.string.chat_btn_copy)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .defaultMinSize(minWidth = 56.dp, minHeight = 36.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .clickable {
-                try {
-                    val safeText = if (textToCopy.length > 400_000) {
-                        textToCopy.take(400_000) + "\n\n...[truncated]"
-                    } else {
-                        textToCopy
-                    }
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText(clipLabel, safeText))
-                    copied = true
-                    Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Copy failed: ${e.message}", Toast.LENGTH_SHORT).show()
+    Surface(
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            try {
+                val safeText = if (textToCopy.length > 400_000) {
+                    textToCopy.take(400_000) + "\n\n...[truncated]"
+                } else {
+                    textToCopy
                 }
+                composeClipboard.setText(AnnotatedString(safeText))
+                val systemClipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                systemClipboard?.setPrimaryClip(ClipData.newPlainText(clipLabel, safeText))
+                copied = true
+                Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Copy failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+        },
+        shape = RoundedCornerShape(6.dp),
+        color = Color.Transparent,
+        modifier = modifier
     ) {
-        Icon(
-            imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-            contentDescription = copyLabel,
-            tint = if (copied) AntigravityGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            modifier = Modifier.size(14.dp)
-        )
-        Spacer(modifier = Modifier.width(5.dp))
-        Text(
-            text = if (copied) "Copied" else copyLabel,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-            color = if (copied) AntigravityGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Icon(
+                imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                contentDescription = copyLabel,
+                tint = if (copied) AntigravityGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = if (copied) "Copied" else copyLabel,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                color = if (copied) AntigravityGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+        }
     }
 }

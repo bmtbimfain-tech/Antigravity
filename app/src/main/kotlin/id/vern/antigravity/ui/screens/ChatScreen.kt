@@ -1813,7 +1813,7 @@ fun ChatScreen(
                                     }
                                 }
                                 item(key = "chat_bottom_anchor") {
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(1.dp))
                                 }
                             }
                         }
