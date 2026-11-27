@@ -1979,24 +1979,27 @@ fun ModelsAndUsageSettingsPage(
                                 avail.matches(cli.cliId) ||
                                 avail.matches(cli.displayName)
                             }
-                            val pct = matchingAvail?.percentage
+                            val ownerGroup = userQuotaSummary?.groups?.firstOrNull { g ->
+                                g.modelIds.contains(cli.cliId) ||
+                                (matchingAvail?.groupName != null && g.displayName.equals(matchingAvail.groupName, ignoreCase = true)) ||
+                                g.sharedModels.any { shared ->
+                                    id.vern.antigravity.data.AvailableModelInfo.normalizeForMatch(shared) == id.vern.antigravity.data.AvailableModelInfo.normalizeForMatch(cli.displayName)
+                                }
+                            }
+                            val fiveHourB = ownerGroup?.fiveHourBucket()
+                            val pct = fiveHourB?.percentage
                                 ?: getModelQuotaPercentage(cli.cliId, userQuotaSummary).first
                                 ?: getModelQuotaPercentage(cli.displayName, userQuotaSummary).first
-                            val resetT = matchingAvail?.resetTime ?: run {
-                                val ownerGroup = userQuotaSummary?.groups?.firstOrNull { g ->
-                                    g.modelIds.contains(cli.cliId) ||
-                                    g.sharedModels.any { shared ->
-                                        id.vern.antigravity.data.AvailableModelInfo.normalizeForMatch(shared) == id.vern.antigravity.data.AvailableModelInfo.normalizeForMatch(cli.displayName)
-                                    }
-                                }
-                                ownerGroup?.buckets?.firstOrNull()?.resetTime
-                            }
+                                ?: matchingAvail?.percentage
+                            val resetT = fiveHourB?.resetTime
+                                ?: matchingAvail?.resetTime
+                                ?: ownerGroup?.buckets?.firstOrNull()?.resetTime
                             val availStatus = matchingAvail?.availability ?: ModelAvailability.AVAILABLE
                             AvailableModelInfo(
                                 modelId = cli.cliId,
                                 displayName = cli.label.ifBlank { cli.displayName },
                                 provider = cli.provider.ifBlank { AgyModelsService.providerForDisplayName(cli.displayName).ifBlank { "Google" } },
-                                remainingFraction = pct?.let { it / 100.0 },
+                                remainingFraction = fiveHourB?.remainingFraction ?: pct?.let { (it + 1e-6) / 100.0 },
                                 resetTime = resetT,
                                 availability = availStatus
                             )

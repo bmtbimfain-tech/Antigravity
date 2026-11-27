@@ -669,8 +669,10 @@ object CloudCodeQuotaService {
                         else -> null
                     }
 
-                    val rem = qiRem ?: ownerGroup?.buckets?.firstOrNull()?.remainingFraction
-                    val resetT = qiReset ?: ownerGroup?.buckets?.firstOrNull()?.resetTime
+                    val fiveHourB = ownerGroup?.fiveHourBucket()
+                    val fallbackB = ownerGroup?.buckets?.firstOrNull()
+                    val rem = fiveHourB?.remainingFraction ?: qiRem ?: fallbackB?.remainingFraction
+                    val resetT = fiveHourB?.resetTime ?: qiReset ?: fallbackB?.resetTime
 
                     availableModels.add(
                         AvailableModelInfo(
@@ -698,8 +700,9 @@ object CloudCodeQuotaService {
                         }
                     }
 
-                val rem = ownerGroup?.buckets?.firstOrNull()?.remainingFraction
-                val resetT = ownerGroup?.buckets?.firstOrNull()?.resetTime
+                val preferredB = ownerGroup?.fiveHourBucket() ?: ownerGroup?.buckets?.firstOrNull()
+                val rem = preferredB?.remainingFraction
+                val resetT = preferredB?.resetTime
 
                 availableModels.add(
                     AvailableModelInfo(

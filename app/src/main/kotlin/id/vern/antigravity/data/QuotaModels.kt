@@ -79,7 +79,14 @@ data class QuotaGroup(
     val sharedModels: List<String> = emptyList(),
     val buckets: List<QuotaBucket> = emptyList(),
     val modelIds: Set<String> = emptySet()
-)
+) {
+    fun fiveHourBucket(): QuotaBucket? = buckets.firstOrNull {
+        it.window.equals("5h", ignoreCase = true) ||
+            it.bucketId.contains("5h", ignoreCase = true) ||
+            it.displayName.contains("5h", ignoreCase = true) ||
+            it.displayName.contains("Five Hour", ignoreCase = true)
+    }
+}
 
 data class UserQuotaSummary(
     val groups: List<QuotaGroup> = emptyList(),
