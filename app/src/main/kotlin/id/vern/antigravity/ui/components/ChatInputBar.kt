@@ -554,7 +554,8 @@ fun ChatInputBar(
             }
         }
 
-        AnimatedVisibility(visible = runningSubagents.isNotEmpty()) {
+        val activeSubagents = remember(runningSubagents) { runningSubagents.filter { it.isRunning } }
+        AnimatedVisibility(visible = activeSubagents.isNotEmpty()) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -565,7 +566,7 @@ fun ChatInputBar(
                 tonalElevation = 2.dp
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    val subagentCount = runningSubagents.size
+                    val subagentCount = activeSubagents.size
                     val headerText = if (subagentCount == 1) {
                         stringResource(R.string.chat_subagent_running, 1)
                     } else {
@@ -601,7 +602,7 @@ fun ChatInputBar(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                         )
                         Column(modifier = Modifier.padding(vertical = 2.dp)) {
-                            runningSubagents.forEach { subagent ->
+                            activeSubagents.forEach { subagent ->
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
