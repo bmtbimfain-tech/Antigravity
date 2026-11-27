@@ -3,12 +3,19 @@ package id.vern.antigravity.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.app.Activity
+import android.content.ContextWrapper
+import android.view.Window
+import android.view.WindowManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.PersistableBundle
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -3534,6 +3541,41 @@ fun AccountSettingsPage(
     onNavigateTo: (SettingsPage) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
+    DisposableEffect(context, view) {
+        val windows = linkedSetOf<Window>()
+        var ctx = context
+        while (ctx is ContextWrapper) {
+            if (ctx is Activity) {
+                ctx.window?.let { windows.add(it) }
+                break
+            }
+            ctx = ctx.baseContext
+        }
+        var parent = view.parent
+        while (parent != null) {
+            if (parent is DialogWindowProvider) {
+                windows.add(parent.window)
+                break
+            }
+            parent = parent.parent
+        }
+        val modified = mutableListOf<Window>()
+        for (w in windows) {
+            val alreadySecure = ((w.attributes?.flags ?: 0) and WindowManager.LayoutParams.FLAG_SECURE) != 0
+            if (!alreadySecure) {
+                w.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                modified.add(w)
+            }
+        }
+        onDispose {
+            for (w in modified) {
+                try {
+                    w.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                } catch (_: Exception) {}
+            }
+        }
+    }
     val userEmail by viewModel.userEmail.collectAsStateWithLifecycle()
     val userName by viewModel.userName.collectAsStateWithLifecycle()
     val userPicture by viewModel.userPicture.collectAsStateWithLifecycle()
@@ -5418,7 +5460,7 @@ fun AboutSettingsPage(
                     ) {
                         OutlinedButton(
                             onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/KuatoDev/Antigravity"))
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/bmtbimfain-tech/Antigravity"))
                                 context.startActivity(intent)
                             },
                             shape = RoundedCornerShape(8.dp),
