@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.PersistableBundle
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -76,6 +78,8 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.ui.graphics.SolidColor
 import id.vern.antigravity.service.PermissionRule
 import id.vern.antigravity.ui.components.DialogBlurEffect
@@ -3667,6 +3671,14 @@ fun AccountSettingsPage(
 
                     if (!token.isNullOrBlank()) {
                         val displayToken = token
+                        var showAccessToken by remember(displayToken) { mutableStateOf(false) }
+                        val maskedToken = remember(displayToken) {
+                            if (displayToken.length > 10) {
+                                "${displayToken.take(4)}••••••••••••${displayToken.takeLast(4)}"
+                            } else {
+                                "••••••••••••••••"
+                            }
+                        }
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
                             text = stringResource(R.string.account_token_label),
@@ -3683,32 +3695,49 @@ fun AccountSettingsPage(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 8.dp)
+                                modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
                             ) {
                                 Text(
-                                    text = displayToken,
+                                    text = if (showAccessToken) displayToken else maskedToken,
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 11.sp
                                     ),
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 3,
+                                    maxLines = if (showAccessToken) 3 else 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
                                 IconButton(
+                                    onClick = { showAccessToken = !showAccessToken },
+                                    modifier = Modifier.size(44.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (showAccessToken) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (showAccessToken) "Hide token" else "Show token",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                IconButton(
                                     onClick = {
                                         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        cm.setPrimaryClip(ClipData.newPlainText("access_token", displayToken))
+                                        val clip = ClipData.newPlainText("access_token", displayToken)
+                                        if (Build.VERSION.SDK_INT >= 33) {
+                                            clip.description.extras = PersistableBundle().apply {
+                                                putBoolean("android.content.extra.IS_SENSITIVE", true)
+                                            }
+                                        }
+                                        cm.setPrimaryClip(clip)
                                         Toast.makeText(context, context.getString(R.string.account_token_copied), Toast.LENGTH_SHORT).show()
                                     },
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(44.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.ContentCopy,
                                         contentDescription = stringResource(R.string.chat_copy_code),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
