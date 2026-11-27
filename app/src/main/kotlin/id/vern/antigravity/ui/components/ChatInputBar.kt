@@ -85,6 +85,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -739,6 +740,7 @@ fun ChatInputBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .clipToBounds()
                 .padding(
                     horizontal = if (isCompactLandscape) 10.dp else 14.dp,
                     vertical = if (isCompactLandscape) 3.dp else 6.dp

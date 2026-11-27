@@ -147,7 +147,7 @@ fun ChatBubble(
                     .animateContentSize(),
                 tonalElevation = 1.dp
             ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                     if (message.attachments.isNotEmpty()) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -266,65 +266,66 @@ fun ChatBubble(
                         }
                     }
 
-                    val toastCopiedMsg = stringResource(R.string.chat_toast_copied)
-                    Row(
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
+                }
+            }
+
+            val toastCopiedMsg = stringResource(R.string.chat_toast_copied)
+            Row(
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .widthIn(max = 500.dp)
+                    .padding(top = 2.dp, end = 4.dp)
+            ) {
+                if (isLongPrompt) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
+                            .clip(CircleShape)
+                            .clickable { isExpanded = !isExpanded }
+                            .padding(2.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        if (isLongPrompt) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable { isExpanded = !isExpanded }
-                                    .padding(4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = stringResource(R.string.chat_expand_collapse),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .rotate(chevronRotation)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-
-                        if (!isExecuting && !isPinnedExecuting) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable { onUndoPrompt(message) }
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Undo,
-                                    contentDescription = stringResource(R.string.chat_undo_desc),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(R.string.chat_btn_undo),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                        }
-
-                        CopyActionButton(
-                            textToCopy = message.content,
-                            clipLabel = stringResource(R.string.chat_btn_copy),
-                            toastMessage = toastCopiedMsg
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = stringResource(R.string.chat_expand_collapse),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .rotate(chevronRotation)
                         )
                     }
+                    Spacer(modifier = Modifier.width(6.dp))
                 }
+
+                if (!isExecuting && !isPinnedExecuting) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onUndoPrompt(message) }
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = stringResource(R.string.chat_undo_desc),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = stringResource(R.string.chat_btn_undo),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
+                CopyActionButton(
+                    textToCopy = message.content,
+                    clipLabel = stringResource(R.string.chat_btn_copy),
+                    toastMessage = toastCopiedMsg
+                )
             }
         }
     } else {
@@ -712,7 +713,7 @@ fun ChatBubble(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                     modifier = Modifier.widthIn(max = 600.dp)
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                         MarkdownText(
                             markdown = message.content,
                             textColor = MaterialTheme.colorScheme.onSurface,
@@ -720,21 +721,22 @@ fun ChatBubble(
                             lineHeight = 17.sp,
                             selectable = message.status == MessageStatus.SENT
                         )
-
-                        val toastCopiedMsg = stringResource(R.string.chat_toast_copied)
-                        Row(
-                            horizontalArrangement = Arrangement.End,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                        ) {
-                            CopyActionButton(
-                                textToCopy = message.content,
-                                clipLabel = stringResource(R.string.chat_assistant_response),
-                                toastMessage = toastCopiedMsg
-                            )
-                        }
                     }
+                }
+
+                val toastCopiedMsg = stringResource(R.string.chat_toast_copied)
+                Row(
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier
+                        .widthIn(max = 600.dp)
+                        .fillMaxWidth()
+                        .padding(top = 2.dp, end = 4.dp)
+                ) {
+                    CopyActionButton(
+                        textToCopy = message.content,
+                        clipLabel = stringResource(R.string.chat_assistant_response),
+                        toastMessage = toastCopiedMsg
+                    )
                 }
             }
 
@@ -1528,18 +1530,18 @@ private fun CopyActionButton(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
         ) {
             Icon(
                 imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
                 contentDescription = copyLabel,
                 tint = if (copied) AntigravityGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(13.dp)
+                modifier = Modifier.size(12.dp)
             )
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(3.dp))
             Text(
                 text = if (copied) "Copied" else copyLabel,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                 color = if (copied) AntigravityGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
         }
