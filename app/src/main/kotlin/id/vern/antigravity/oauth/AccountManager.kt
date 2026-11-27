@@ -135,12 +135,19 @@ object AccountManager {
                 arr.put(obj)
             }
             root.put("accounts", arr)
-            file.parentFile?.mkdirs()
-            file.writeText(root.toString(2), Charsets.UTF_8)
-            file.setReadable(false, false)
-            file.setWritable(false, false)
-            file.setReadable(true, true)
-            file.setWritable(true, true)
+            file.parentFile?.let { dir ->
+                dir.mkdirs()
+                try { android.system.Os.chmod(dir.absolutePath, 448) } catch (_: Exception) {}
+            }
+            val tmpFile = File(file.parentFile, "${file.name}.tmp")
+            if (tmpFile.exists()) tmpFile.delete()
+            tmpFile.createNewFile()
+            try { android.system.Os.chmod(tmpFile.absolutePath, 384) } catch (_: Exception) {}
+            tmpFile.writeText(root.toString(2), Charsets.UTF_8)
+            if (!tmpFile.renameTo(file)) {
+                file.writeText(root.toString(2), Charsets.UTF_8)
+                tmpFile.delete()
+            }
             try { android.system.Os.chmod(file.absolutePath, 384) } catch (_: Exception) {}
         } catch (e: Exception) {
             AppLogger.e("AccountManager", "Failed to persist accounts: ${e.message}")
@@ -240,16 +247,17 @@ object AccountManager {
 
         val removed = accounts.removeAt(index)
         val currentActive = getActiveAccountId(context)
-        val newActiveId = if (currentActive == removed.id || currentActive == removed.email) {
-            accounts.firstOrNull()?.id
+        val resolvedNext = if (currentActive != null && (currentActive.equals(removed.id, ignoreCase = true) || currentActive.equals(removed.email, ignoreCase = true))) {
+            accounts.firstOrNull()
         } else {
-            currentActive
+            accounts.firstOrNull { it.id.equals(currentActive, ignoreCase = true) } ?: accounts.firstOrNull()
         }
+        val newActiveId = resolvedNext?.id
 
         persist(context, newActiveId, accounts)
 
-        if (newActiveId != null) {
-            val next = accounts.first { it.id == newActiveId }
+        if (resolvedNext != null) {
+            val next = resolvedNext
             OAuthManager.writeRawTokenJson(context, next.tokenJson)
             val prefs = context.getSharedPreferences(OAuthManager.PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit()

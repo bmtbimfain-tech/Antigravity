@@ -170,7 +170,11 @@ object CoreUpdateManager {
 
             onProgress(0.68f, "Verifying archive SHA-512 checksum...")
             val expectedSha512 = updateInfo.sha512.trim()
-            if (expectedSha512.isNotEmpty()) {
+            if (!expectedSha512.matches(Regex("^[0-9a-fA-F]{128}$"))) {
+                try { tarGzFile.delete() } catch (_: Exception) {}
+                return Result.failure(Exception("Refusing core update without valid SHA-512 checksum in manifest"))
+            }
+            run {
                 val digest = MessageDigest.getInstance("SHA-512")
                 tarGzFile.inputStream().use { input ->
                     val hashBuf = ByteArray(65536)

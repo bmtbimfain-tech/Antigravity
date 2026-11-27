@@ -13,6 +13,7 @@ class WakeLockHolder {
 
     private var wakeLock: PowerManager.WakeLock? = null
 
+    @Synchronized
     fun acquire(context: Context, timeoutMs: Long = 10 * 60 * 1000L) {
         try {
             val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -33,6 +34,7 @@ class WakeLockHolder {
         }
     }
 
+    @Synchronized
     fun release() {
         try {
             if (wakeLock?.isHeld == true) {
@@ -47,6 +49,6 @@ class WakeLockHolder {
     }
 
     val isHeld: Boolean
-        get() = wakeLock?.isHeld == true
+        @Synchronized get() = wakeLock?.isHeld == true
 }
 

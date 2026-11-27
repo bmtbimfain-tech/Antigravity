@@ -27,6 +27,7 @@ class SystemGatewayServer(
 ) {
     companion object {
         private const val TAG = "SystemGateway"
+        private const val MAX_BODY_BYTES = 64 * 1024
     }
 
     private val executor = Executors.newFixedThreadPool(3)
@@ -67,11 +68,13 @@ class SystemGatewayServer(
             serverSocket?.close()
         } catch (e: Exception) {}
         serverSocket = null
+        executor.shutdownNow()
     }
 
     private fun handleClient(socket: Socket) {
         socket.use { client ->
             try {
+                client.soTimeout = 5000
                 val reader = BufferedReader(InputStreamReader(client.getInputStream(), Charsets.UTF_8))
                 val firstLine = reader.readLine() ?: return
                 val parts = firstLine.split(" ")
@@ -87,6 +90,11 @@ class SystemGatewayServer(
                     headerLine = reader.readLine()
                 }
 
+                if (contentLength < 0 || contentLength > MAX_BODY_BYTES) {
+                    val err = "HTTP/1.1 413 Payload Too Large\r\nConnection: close\r\n\r\n"
+                    client.getOutputStream().write(err.toByteArray(Charsets.UTF_8))
+                    return
+                }
                 val body = if (contentLength > 0) {
                     val buffer = CharArray(contentLength)
                     var read = 0
@@ -136,8 +144,8 @@ class SystemGatewayServer(
                 result.put("toast", "shown")
             }
             "open_url" -> {
-                val url = json.optString("url")
-                if (url.isNotBlank()) {
+                val url = json.optString("url").trim()
+                if (url.startsWith("https://", ignoreCase = true) || url.startsWith("http://", ignoreCase = true)) {
                     mainHandler.post {
                         try {
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
@@ -158,8 +166,17 @@ class SystemGatewayServer(
                     }
                     result.put("set", true)
                 } else {
-                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val text = cm.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                    val latch = java.util.concurrent.CountDownLatch(1)
+                    var text = ""
+                    mainHandler.post {
+                        try {
+                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            text = cm.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                        } catch (_: Exception) {} finally {
+                            latch.countDown()
+                        }
+                    }
+                    latch.await(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
                     result.put("clipboard", text)
                 }
             }

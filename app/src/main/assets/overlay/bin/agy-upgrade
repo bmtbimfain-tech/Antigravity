@@ -56,13 +56,13 @@ cmd_backup() {
     echo "============================================================"
     echo "[*] Destination: $dest"
     
-    "$PYTHON_BIN" - << PYEOF
+    AGY_BACKUP_PATH="$dest" AGY_BACKUP_ROOT="$BACKUP_ROOT" "$PYTHON_BIN" - << 'PYEOF'
 import os, sys, json, tarfile, time, subprocess, shutil
 
 home = os.environ.get("HOME", "")
 prefix = os.environ.get("PREFIX", "")
-backup_path = "$dest"
-backup_root = "$BACKUP_ROOT"
+backup_path = os.environ["AGY_BACKUP_PATH"]
+backup_root = os.environ["AGY_BACKUP_ROOT"]
 os.makedirs(backup_root, exist_ok=True)
 
 print(f"[*] Scanning Home: {home}")
@@ -117,10 +117,21 @@ with tarfile.open(backup_path, "w:gz") as tar:
     gemini_dir = os.path.join(home, ".gemini")
     if os.path.isdir(gemini_dir):
         print("  + Adding ~/.gemini (conversations, brain, skills, rules, config)")
-        tar.add(gemini_dir, arcname=".gemini")
+        SENSITIVE_NAMES = {
+            "antigravity-oauth-token",
+            "jetski-standalone-oauth-token",
+            "accounts_store.json",
+            ".antigravity_endpoint",
+        }
+        def _exclude_secrets(tarinfo):
+            base = os.path.basename(tarinfo.name)
+            if base in SENSITIVE_NAMES or "oauth-token" in base or base.endswith((".key", ".jks", ".keystore")):
+                return None
+            return tarinfo
+        tar.add(gemini_dir, arcname=".gemini", filter=_exclude_secrets)
     
     # 2. User shell configs
-    for conf in [".bashrc", ".profile", ".gitconfig", ".bash_history"]:
+    for conf in [".bashrc", ".profile", ".gitconfig"]:
         conf_path = os.path.join(home, conf)
         if os.path.isfile(conf_path):
             print(f"  + Adding {conf}")
@@ -157,12 +168,12 @@ cmd_restore() {
     echo "============================================================"
     echo "[*] Source: $src"
 
-    "$PYTHON_BIN" - << PYEOF
+    AGY_RESTORE_PATH="$src" "$PYTHON_BIN" - << 'PYEOF'
 import os, sys, json, tarfile, subprocess
 
 home = os.environ.get("HOME", "")
 prefix = os.environ.get("PREFIX", "")
-backup_path = "$src"
+backup_path = os.environ["AGY_RESTORE_PATH"]
 
 print(f"[*] Restoring to: {home}")
 
@@ -359,6 +370,16 @@ cmd_core() {
     remote_version=$(echo "$manifest" | grep -o '"version": "[^"]*"' | head -n 1 | cut -d'"' -f4)
     local download_url
     download_url=$(echo "$manifest" | grep -o '"url": "[^"]*"' | head -n 1 | cut -d'"' -f4)
+    local expected_sha512
+    expected_sha512=$(echo "$manifest" | grep -o '"sha512": "[^"]*"' | head -n 1 | cut -d'"' -f4)
+    if ! printf '%s' "$download_url" | grep -Eq '^https://'; then
+        echo "[ERROR] Refusing non-HTTPS core download URL." >&2
+        exit 1
+    fi
+    if ! printf '%s' "$expected_sha512" | grep -Eq '^[0-9a-fA-F]{128}$'; then
+        echo "[ERROR] Refusing core update without valid SHA-512 checksum in manifest." >&2
+        exit 1
+    fi
 
     local current_version
     current_version=$(agy --version 2>/dev/null || echo "unknown")
@@ -379,11 +400,24 @@ cmd_core() {
     if command -v curl >/dev/null 2>&1; then
         curl -L --progress-bar -o "$archive" "$download_url"
     else
-        "$PYTHON_BIN" -c "import urllib.request; urllib.request.urlretrieve('$download_url', '$archive')"
+        AGY_DL_URL="$download_url" AGY_DL_OUT="$archive" "$PYTHON_BIN" -c 'import os,urllib.request; urllib.request.urlretrieve(os.environ["AGY_DL_URL"], os.environ["AGY_DL_OUT"])' 
     fi
 
     if [ ! -f "$archive" ] || [ ! -s "$archive" ]; then
         echo "[ERROR] Download failed or archive is empty." >&2
+        exit 1
+    fi
+
+    echo "[*] Verifying archive SHA-512 checksum..."
+    local actual_sha512
+    if command -v sha512sum >/dev/null 2>&1; then
+        actual_sha512=$(sha512sum "$archive" | cut -d' ' -f1)
+    else
+        actual_sha512=$(AGY_ARCHIVE="$archive" "$PYTHON_BIN" -c 'import hashlib,os; h=hashlib.sha512(); f=open(os.environ["AGY_ARCHIVE"],"rb"); [h.update(c) for c in iter(lambda: f.read(65536), b"")]; f.close(); print(h.hexdigest())')
+    fi
+    if [ "$(printf '%s' "$actual_sha512" | tr 'A-F' 'a-f')" != "$(printf '%s' "$expected_sha512" | tr 'A-F' 'a-f')" ]; then
+        rm -f "$archive"
+        echo "[ERROR] SHA-512 checksum mismatch! Aborting core update." >&2
         exit 1
     fi
 

@@ -176,8 +176,8 @@ internal fun getModelQuotaPercentage(
         } else if (weeklyB != null) {
             return Pair(weeklyB.percentage, weeklyB.subtext)
         } else {
-            val b = ownerGroup.buckets.first()
-            return Pair(b.percentage, b.subtext)
+            val b = ownerGroup.buckets.firstOrNull()
+            if (b != null) return Pair(b.percentage, b.subtext)
         }
     }
 

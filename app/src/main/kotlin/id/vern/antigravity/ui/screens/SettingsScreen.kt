@@ -2568,11 +2568,12 @@ fun RulesManagementDialog(
         viewModel.refreshRules(context)
     }
 
-    if (editingRule != null) {
+    val currentEditingRule = editingRule
+    if (currentEditingRule != null) {
         RuleEditorDialog(
-            rule = editingRule!!,
+            rule = currentEditingRule,
             onSave = { updatedContent ->
-                viewModel.saveRuleContent(context, editingRule!!.filePath, updatedContent) { ok ->
+                viewModel.saveRuleContent(context, currentEditingRule.filePath, updatedContent) { ok ->
                     if (ok) {
                         Toast.makeText(context, "Rule saved successfully", Toast.LENGTH_SHORT).show()
                         editingRule = null
@@ -2582,7 +2583,7 @@ fun RulesManagementDialog(
                 }
             },
             onDelete = {
-                viewModel.deleteRule(context, editingRule!!.filePath) { ok ->
+                viewModel.deleteRule(context, currentEditingRule.filePath) { ok ->
                     if (ok) {
                         Toast.makeText(context, "Rule deleted", Toast.LENGTH_SHORT).show()
                         editingRule = null

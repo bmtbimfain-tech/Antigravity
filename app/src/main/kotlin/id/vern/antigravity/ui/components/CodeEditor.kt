@@ -360,9 +360,13 @@ fun CodeEditor(
                                 factory = { ctx ->
                                     PreviewWebView(ctx).apply {
                                         settings.javaScriptEnabled = true
-                                        settings.domStorageEnabled = true
-                                        settings.allowFileAccess = true
-                                        settings.allowContentAccess = true
+                                        settings.domStorageEnabled = false
+                                        settings.allowFileAccess = false
+                                        settings.allowContentAccess = false
+                                        @Suppress("DEPRECATION")
+                                        settings.allowFileAccessFromFileURLs = false
+                                        @Suppress("DEPRECATION")
+                                        settings.allowUniversalAccessFromFileURLs = false
                                         settings.useWideViewPort = true
                                         settings.loadWithOverviewMode = true
                                         settings.builtInZoomControls = false
@@ -381,7 +385,7 @@ fun CodeEditor(
                                         webViewClient = object : WebViewClient() {
                                             override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
                                                 val url = request?.url?.toString() ?: return false
-                                                if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file://")) {
+                                                if (url.startsWith("http://") || url.startsWith("https://")) {
                                                     return ExternalFileOpener.openUrlOrFile(ctx, url)
                                                 }
                                                 return false
@@ -393,7 +397,7 @@ fun CodeEditor(
                                     val contentKey = "${tab.id}_${tab.file.lastModified()}_${textContent.hashCode()}_$isDark"
                                     if (webView.tag != contentKey) {
                                         webView.tag = contentKey
-                                        val escapedMarkdown = JSONObject.quote(textContent)
+                                        val escapedMarkdown = JSONObject.quote(textContent).replace("</", "<\\/")
                                         val htmlData = """
                                             <!DOCTYPE html>
                                             <html>
@@ -485,7 +489,22 @@ fun CodeEditor(
                                             <script>
                                               try {
                                                 const raw = $escapedMarkdown;
-                                                document.getElementById('content').innerHTML = (typeof marked !== 'undefined' && marked.parse) ? marked.parse(raw) : raw;
+                                                const rendered = (typeof marked !== 'undefined' && marked.parse) ? marked.parse(raw) : raw;
+                                                const tpl = document.createElement('template');
+                                                tpl.innerHTML = rendered;
+                                                tpl.content.querySelectorAll('script,iframe,object,embed').forEach(el => el.remove());
+                                                tpl.content.querySelectorAll('*').forEach(el => {
+                                                  Array.from(el.attributes).forEach(attr => {
+                                                    const n = attr.name.toLowerCase();
+                                                    const v = (attr.value || '').trim().toLowerCase();
+                                                    if (n.startsWith('on') || ((n === 'href' || n === 'src') && v.startsWith('javascript:'))) {
+                                                      el.removeAttribute(attr.name);
+                                                    }
+                                                  });
+                                                });
+                                                const container = document.getElementById('content');
+                                                container.innerHTML = '';
+                                                container.appendChild(tpl.content);
                                               } catch (e) {
                                                 document.getElementById('content').innerText = e.message;
                                               }
@@ -511,9 +530,13 @@ fun CodeEditor(
                                 factory = { ctx ->
                                     PreviewWebView(ctx).apply {
                                         settings.javaScriptEnabled = true
-                                        settings.domStorageEnabled = true
-                                        settings.allowFileAccess = true
-                                        settings.allowContentAccess = true
+                                        settings.domStorageEnabled = false
+                                        settings.allowFileAccess = false
+                                        settings.allowContentAccess = false
+                                        @Suppress("DEPRECATION")
+                                        settings.allowFileAccessFromFileURLs = false
+                                        @Suppress("DEPRECATION")
+                                        settings.allowUniversalAccessFromFileURLs = false
                                         settings.useWideViewPort = true
                                         settings.loadWithOverviewMode = true
                                         settings.builtInZoomControls = false
@@ -529,7 +552,12 @@ fun CodeEditor(
                                             }
                                             false
                                         }
-                                        webViewClient = WebViewClient()
+                                        webViewClient = object : WebViewClient() {
+                                            override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+                                                val scheme = request?.url?.scheme?.lowercase()
+                                                return scheme !in setOf("http", "https", "about", "data")
+                                            }
+                                        }
                                     }
                                 },
                                 update = { webView ->

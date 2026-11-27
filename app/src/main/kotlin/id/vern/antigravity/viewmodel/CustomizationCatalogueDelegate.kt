@@ -613,13 +613,30 @@ class CustomizationCatalogueDelegate {
                                     onLog("Plugin", "Downloading RTK binary from release payload...", false)
                                     val rtkUrl = URL("https://github.com/KuatoDev/antigravity-bootstrap/releases/download/core-v1/rtk")
                                     usrBinRtk.parentFile?.mkdirs()
+                                    val tmpRtk = File(usrBinRtk.parentFile, "rtk.download.tmp")
+                                    val md = java.security.MessageDigest.getInstance("SHA-256")
                                     rtkUrl.openStream().use { input ->
-                                        usrBinRtk.outputStream().use { output ->
-                                            input.copyTo(output)
+                                        tmpRtk.outputStream().use { output ->
+                                            val buf = ByteArray(16384)
+                                            var n: Int
+                                            while (input.read(buf).also { n = it } != -1) {
+                                                md.update(buf, 0, n)
+                                                output.write(buf, 0, n)
+                                            }
                                         }
                                     }
+                                    val actualSha = md.digest().joinToString("") { "%02x".format(it) }
+                                    if (!actualSha.equals("6c0f2172d43a254c38fff81f637e03c7955f1527d9f2db0260808158905de38d", ignoreCase = true)) {
+                                        tmpRtk.delete()
+                                        throw SecurityException("RTK binary SHA-256 mismatch: $actualSha")
+                                    }
+                                    if (usrBinRtk.exists()) usrBinRtk.delete()
+                                    if (!tmpRtk.renameTo(usrBinRtk)) {
+                                        tmpRtk.copyTo(usrBinRtk, overwrite = true)
+                                        tmpRtk.delete()
+                                    }
                                     usrBinRtk.setExecutable(true, false)
-                                    onLog("Plugin", "RTK binary downloaded successfully.", false)
+                                    onLog("Plugin", "RTK binary downloaded and SHA-256 verified.", false)
                                 } catch (e: Exception) {
                                     onLog("Plugin", "Failed to download RTK: ${e.message}", true)
                                 }

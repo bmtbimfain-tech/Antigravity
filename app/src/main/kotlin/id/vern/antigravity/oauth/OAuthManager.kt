@@ -850,8 +850,14 @@ migrations:  {
                 } catch (e: Exception) {
                     break
                 }
-                val reader = BufferedReader(InputStreamReader(sock.getInputStream(), StandardCharsets.UTF_8))
-                val reqLine = reader.readLine() ?: ""
+                sock.soTimeout = 5000
+                val reqLine = try {
+                    BufferedReader(InputStreamReader(sock.getInputStream(), StandardCharsets.UTF_8)).readLine() ?: ""
+                } catch (_: Exception) {
+                    try { sock.close() } catch (_: Exception) {}
+                    continue
+                }
+                val reqPath = reqLine.split(" ").getOrNull(1)?.substringBefore("?") ?: ""
                 val queryPart = reqLine.substringAfter("?", "").substringBefore(" ")
                 val queryParams = if (queryPart.isNotEmpty()) {
                     queryPart.split("&").associate { pair ->
@@ -863,7 +869,8 @@ migrations:  {
                 } else emptyMap()
                 val extracted = queryParams["code"]?.takeIf { it.isNotBlank() }
                 val returnedState = queryParams["state"]
-                if (extracted != null && returnedState == expectedState) {
+                val stateMatch = returnedState != null && MessageDigest.isEqual(returnedState.toByteArray(StandardCharsets.UTF_8), expectedState.toByteArray(StandardCharsets.UTF_8))
+                if (reqPath == "/oauth/callback" && extracted != null && stateMatch) {
                     code = extracted
                     clientSocket = sock
                 } else {
@@ -944,6 +951,8 @@ migrations:  {
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.doOutput = true
+            conn.connectTimeout = 10000
+            conn.readTimeout = 10000
             conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
 
             val bodySb = StringBuilder()
@@ -1059,7 +1068,7 @@ migrations:  {
             context = context,
             code = trimmed,
             redirectUri = "http://127.0.0.1:$CALLBACK_PORT/oauth/callback",
-            codeVerifier = null,
+            codeVerifier = verifier,
             onSuccess = onSuccess,
             onError = { lastErr = it }
         )

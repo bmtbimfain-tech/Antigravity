@@ -107,7 +107,13 @@ class UpdateChecker(private val context: Context) {
                 }
             }
 
-            if (downloadUrl.isBlank()) {
+            val parsedDownloadUri = Uri.parse(downloadUrl.trim())
+            val allowedHosts = setOf("github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com", "api.github.com")
+            if (downloadUrl.isBlank() ||
+                !parsedDownloadUri.scheme.equals("https", ignoreCase = true) ||
+                parsedDownloadUri.host?.lowercase() !in allowedHosts
+            ) {
+                Log.w(TAG, "Ignoring untrusted OTA download URL: $downloadUrl")
                 return@withContext null
             }
 
@@ -241,14 +247,14 @@ class UpdateChecker(private val context: Context) {
 
             try {
                 val query = DownloadManager.Query().setFilterById(downloadId)
-                val cursor = dm.query(query)
                 var localUriString: String? = null
-                if (cursor != null && cursor.moveToFirst()) {
-                    val localUriIdx = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
-                    if (localUriIdx >= 0) {
-                        localUriString = cursor.getString(localUriIdx)
+                dm.query(query)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val localUriIdx = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
+                        if (localUriIdx >= 0) {
+                            localUriString = cursor.getString(localUriIdx)
+                        }
                     }
-                    cursor.close()
                 }
 
                 if (!localUriString.isNullOrBlank()) {
@@ -311,8 +317,8 @@ class UpdateChecker(private val context: Context) {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         var downloading = true
         while (downloading) {
-            val cursor = dm.query(DownloadManager.Query().setFilterById(downloadId))
-            if (cursor != null && cursor.moveToFirst()) {
+            val found = dm.query(DownloadManager.Query().setFilterById(downloadId))?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use false
                 val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
                 when (status) {
                     DownloadManager.STATUS_SUCCESSFUL -> {
@@ -332,7 +338,11 @@ class UpdateChecker(private val context: Context) {
                         }
                     }
                 }
-                cursor.close()
+                true
+            } ?: false
+            if (!found) {
+                onState(AppUpdateState.Idle)
+                downloading = false
             }
             delay(300)
         }

@@ -80,6 +80,7 @@ object CloudCodeQuotaService {
                 try {
                     f.parentFile?.mkdirs()
                     f.writeText(json, Charsets.UTF_8)
+                    try { android.system.Os.chmod(f.absolutePath, 384) } catch (_: Exception) {}
                 } catch (e: Exception) {}
             }
         } catch (e: Exception) {}
@@ -137,7 +138,7 @@ object CloudCodeQuotaService {
         for (scheme in schemes) {
             try {
                 val sc = cachedSslContext
-                val allHostsValid = HostnameVerifier { hostname, session -> true }
+                val allHostsValid = HostnameVerifier { hostname, _ -> hostname == "127.0.0.1" || hostname == "localhost" }
 
                 val url = URL("$scheme://127.0.0.1:$port/")
                 val conn = url.openConnection()
@@ -154,7 +155,7 @@ object CloudCodeQuotaService {
                 val token = tokenRegex.find(html)?.groupValues?.get(1)
                     ?: altRegex.find(html)?.groupValues?.get(1)
                 if (!token.isNullOrBlank()) {
-                    Log.i(TAG, "Discovered live CSRF token from $scheme://127.0.0.1:$port/: $token")
+                    Log.i(TAG, "Discovered live CSRF token from $scheme://127.0.0.1:$port/ (redacted)")
                     return token
                 }
             } catch (e: ConnectException) {
@@ -181,7 +182,7 @@ object CloudCodeQuotaService {
             val token = tokenRegex.find(html)?.groupValues?.get(1)
                 ?: altRegex.find(html)?.groupValues?.get(1)
             if (!token.isNullOrBlank()) {
-                Log.i(TAG, "Discovered live CSRF token via curl from port $port: $token")
+                Log.i(TAG, "Discovered live CSRF token via curl from port $port (redacted)")
                 return token
             }
         } catch (e: Exception) {}
@@ -739,7 +740,7 @@ object CloudCodeQuotaService {
             var modelsRespStr: String? = null
 
             val sc = cachedSslContext
-            val allHostsValid = HostnameVerifier { hostname, session -> true }
+            val allHostsValid = HostnameVerifier { hostname, _ -> hostname == "127.0.0.1" || hostname == "localhost" }
 
             try {
                 if (sc != null) {
@@ -884,7 +885,7 @@ object CloudCodeQuotaService {
                 val url = URL("https://127.0.0.1:$port/exa.language_server_pb.LanguageServerService/Restart")
                 val conn = url.openConnection() as HttpsURLConnection
                 conn.sslSocketFactory = sc.socketFactory
-                conn.hostnameVerifier = HostnameVerifier { hostname, session -> true }
+                conn.hostnameVerifier = HostnameVerifier { hostname, _ -> hostname == "127.0.0.1" || hostname == "localhost" }
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.connectTimeout = 3000

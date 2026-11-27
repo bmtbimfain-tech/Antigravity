@@ -8,6 +8,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import id.vern.antigravity.BuildConfig
 import id.vern.antigravity.R
 import id.vern.antigravity.gateway.SystemGatewayServer
 import id.vern.antigravity.util.AppLogger
@@ -65,7 +66,7 @@ class CoreServerService : Service() {
         }
         wakeLockHolder.acquire(this, 15_000L)
 
-        gatewayServer = SystemGatewayServer(this, 45161, wakeLockHolder)
+        gatewayServer = SystemGatewayServer(this, BuildConfig.GATEWAY_PORT, wakeLockHolder)
         gatewayServer?.start()
 
         startBackgroundDaemon()
@@ -130,10 +131,12 @@ class CoreServerService : Service() {
                     val tmpDir = File(filesDir, "tmp").apply { mkdirs() }
                     val certFile = File(prefixDir, "etc/tls/cert.pem")
                     try {
-                        ProcessBuilder(daemonBin.absolutePath, "stop")
-                            .directory(homeDir)
-                            .start()
-                            .waitFor(2, TimeUnit.SECONDS)
+                        val stopPb = ProcessBuilder(daemonBin.absolutePath, "stop").directory(homeDir)
+                        stopPb.environment()["PREFIX"] = prefixDir.absolutePath
+                        stopPb.environment()["HOME"] = homeDir.absolutePath
+                        stopPb.environment()["PATH"] = "${prefixDir.absolutePath}/bin:${filesDir.absolutePath}/engine/bin:/system/bin"
+                        stopPb.environment()["LD_LIBRARY_PATH"] = "${prefixDir.absolutePath}/lib:/system/lib64"
+                        stopPb.start().waitFor(2, TimeUnit.SECONDS)
                     } catch (_: Exception) {}
                     pb.environment()["PREFIX"] = prefixDir.absolutePath
                     pb.environment()["HOME"] = homeDir.absolutePath
@@ -144,7 +147,6 @@ class CoreServerService : Service() {
                         pb.environment()["SSL_CERT_FILE"] = certFile.absolutePath
                         pb.environment()["CURL_CA_BUNDLE"] = certFile.absolutePath
                     }
-                    pb.environment()["PREFIX"] = "${filesDir.absolutePath}/usr"
                     pb.environment()["AGY_APPLICATION_ID"] = packageName
                     pb.environment()["APPLICATION_ID"] = packageName
                     pb.start()
@@ -161,9 +163,12 @@ class CoreServerService : Service() {
             if (daemonBin.canExecute()) {
                 Log.i(TAG, "Stopping background daemon...")
                 val homeDir = File(filesDir, "home").apply { mkdirs() }
+                val prefixDir = File(filesDir, "usr")
                 val pb = ProcessBuilder(daemonBin.absolutePath, "stop")
                 pb.directory(homeDir)
-                pb.environment()["PATH"] = "${filesDir.absolutePath}/usr/bin:${filesDir.absolutePath}/engine/bin:/system/bin"
+                pb.environment()["PREFIX"] = prefixDir.absolutePath
+                pb.environment()["PATH"] = "${prefixDir.absolutePath}/bin:${filesDir.absolutePath}/engine/bin:/system/bin"
+                pb.environment()["LD_LIBRARY_PATH"] = "${prefixDir.absolutePath}/lib:/system/lib64"
                 pb.environment()["HOME"] = homeDir.absolutePath
                 val p = pb.start()
                 if (!p.waitFor(1500, TimeUnit.MILLISECONDS)) {

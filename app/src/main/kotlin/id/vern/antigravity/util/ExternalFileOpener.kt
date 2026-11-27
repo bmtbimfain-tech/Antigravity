@@ -169,6 +169,10 @@ object ExternalFileOpener {
         } catch (_: Exception) {
             file
         }
+        if (isBlockedPrivateFile(context, targetFile)) {
+            Toast.makeText(context, context.getString(R.string.file_opener_cannot_share, targetFile.name), Toast.LENGTH_SHORT).show()
+            return false
+        }
         val authority = "${context.packageName}.fileprovider"
         val contentUri = try {
             FileProvider.getUriForFile(context, authority, targetFile)
@@ -192,7 +196,6 @@ object ExternalFileOpener {
             clipData = ClipData.newRawUri(displayName, uri)
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                     Intent.FLAG_ACTIVITY_NEW_TASK
             )
         }
@@ -211,7 +214,6 @@ object ExternalFileOpener {
                     clipData = ClipData.newRawUri(displayName, uri)
                     addFlags(
                         Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                             Intent.FLAG_ACTIVITY_NEW_TASK
                     )
                 }
@@ -228,6 +230,18 @@ object ExternalFileOpener {
             Toast.makeText(context, context.getString(R.string.file_opener_cannot_open, displayName), Toast.LENGTH_SHORT).show()
             false
         }
+    }
+
+    private fun isBlockedPrivateFile(context: Context, target: File): Boolean {
+        val targetPath = try { target.canonicalPath } catch (_: Exception) { target.absolutePath }
+        val dataRoot = context.filesDir.parentFile
+        val blockedDirs = listOfNotNull(
+            File(context.filesDir, ".gemini"),
+            File(context.filesDir, "home/.gemini"),
+            dataRoot?.let { File(it, "shared_prefs") },
+            dataRoot?.let { File(it, "databases") }
+        ).mapNotNull { try { it.canonicalPath } catch (_: Exception) { it.absolutePath } }
+        return blockedDirs.any { dir -> targetPath == dir || targetPath.startsWith("$dir/") }
     }
 
     private fun resolveLocalFile(raw: String): File? {

@@ -42,9 +42,14 @@ object AppLogger {
                     logDir.mkdirs()
                 }
                 val logFile = File(logDir, "logs.txt")
-                val timeStr = timeFormat.format(Date())
-                val line = "[$timeStr] [$tag] $message\n"
                 synchronized(lock) {
+                    if (logFile.exists() && logFile.length() > 2L * 1024L * 1024L) {
+                        val rotated = File(logDir, "logs.prev.txt")
+                        if (rotated.exists()) rotated.delete()
+                        logFile.renameTo(rotated)
+                    }
+                    val timeStr = timeFormat.format(Date())
+                    val line = "[$timeStr] [$tag] $message\n"
                     logFile.appendText(line, Charsets.UTF_8)
                 }
             } catch (e: Throwable) {
