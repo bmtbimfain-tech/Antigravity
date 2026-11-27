@@ -2,6 +2,9 @@ package id.vern.antigravity.ui.components
 
 import id.vern.antigravity.util.ExternalFileOpener
 
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.material.icons.filled.Check
+import id.vern.antigravity.ui.theme.AntigravityGreen
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -311,30 +314,11 @@ fun ChatBubble(
                             Spacer(modifier = Modifier.width(6.dp))
                         }
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_btn_copy), message.content))
-                                    Toast.makeText(context, toastCopiedMsg, Toast.LENGTH_SHORT).show()
-                                }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = stringResource(R.string.chat_btn_copy),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = stringResource(R.string.chat_btn_copy),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                        }
+                        CopyActionButton(
+                            textToCopy = message.content,
+                            clipLabel = stringResource(R.string.chat_btn_copy),
+                            toastMessage = toastCopiedMsg
+                        )
                     }
                 }
             }
@@ -740,30 +724,11 @@ fun ChatBubble(
                                 .fillMaxWidth()
                                 .padding(top = 8.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_assistant_response), message.content))
-                                        Toast.makeText(context, toastCopiedMsg, Toast.LENGTH_SHORT).show()
-                                    }
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = stringResource(R.string.chat_btn_copy),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(R.string.chat_btn_copy),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                )
-                            }
+                            CopyActionButton(
+                                textToCopy = message.content,
+                                clipLabel = stringResource(R.string.chat_assistant_response),
+                                toastMessage = toastCopiedMsg
+                            )
                         }
                     }
                 }
@@ -1515,3 +1480,57 @@ fun FileBadge(
     }
 }
 
+@Composable
+private fun CopyActionButton(
+    textToCopy: String,
+    clipLabel: String,
+    toastMessage: String,
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var copied by remember { mutableStateOf(false) }
+
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1500L)
+            copied = false
+        }
+    }
+
+    val copyLabel = stringResource(R.string.chat_btn_copy)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .defaultMinSize(minWidth = 56.dp, minHeight = 36.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable {
+                try {
+                    val safeText = if (textToCopy.length > 400_000) {
+                        textToCopy.take(400_000) + "\n\n...[truncated]"
+                    } else {
+                        textToCopy
+                    }
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText(clipLabel, safeText))
+                    copied = true
+                    Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Copy failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Icon(
+            imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+            contentDescription = copyLabel,
+            tint = if (copied) AntigravityGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = if (copied) "Copied" else copyLabel,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+            color = if (copied) AntigravityGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+        )
+    }
+}
