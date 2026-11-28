@@ -1821,6 +1821,10 @@ class AntigravityViewModel : ViewModel() {
                     var thoughtSeq = 0
                     val authUrlRegex = "(https://accounts\\.google\\.com/o/oauth2/auth\\S+)".toRegex()
 
+                    val attemptedAccountIds = mutableSetOf<String>()
+                    AccountManager.getActiveAccount(context)?.id?.let { attemptedAccountIds.add(it.lowercase()) }
+                    val rawTurnLogSb = StringBuilder()
+
                     var currentTurn = 0
                     val maxAutoTurns = 8
                     var autoContinue = true
@@ -1830,6 +1834,7 @@ class AntigravityViewModel : ViewModel() {
                     while (autoContinue && currentTurn < maxAutoTurns && coroutineContext.isActive) {
                         currentTurn++
                         outputSb.clear()
+                        rawTurnLogSb.clear()
 
                         val args = mutableListOf<String>()
                         val currentSec = securityPreset.value.lowercase()
@@ -1884,6 +1889,7 @@ class AntigravityViewModel : ViewModel() {
                         }
 
                         val onAgyLine: (String, Boolean) -> Unit = { line, _ ->
+                        rawTurnLogSb.append(line).append('\n')
                         val trimmed = line.trim()
                         val match = authUrlRegex.find(trimmed)
                         if (match != null) {
@@ -2377,6 +2383,75 @@ class AntigravityViewModel : ViewModel() {
                         val hasTextOutput = outputSb.isNotBlank() || !transcriptResponse.isNullOrBlank()
                         val liveTranscriptSteps = intermediateParsed.steps
                         val hasExecutedSteps = !liveTranscriptSteps.isNullOrEmpty()
+
+                        val combinedTurnDiag = outputStr + "\n" + rawTurnLogSb.toString()
+                        val hasQuotaSignal = !authRequired && (
+                            combinedTurnDiag.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
+                            combinedTurnDiag.contains("quota exceeded", ignoreCase = true) ||
+                            combinedTurnDiag.contains("exceeded your current quota", ignoreCase = true) ||
+                            combinedTurnDiag.contains("rate limit exceeded", ignoreCase = true) ||
+                            combinedTurnDiag.contains("too many requests", ignoreCase = true) ||
+                            Regex("""\b429\b""").containsMatchIn(combinedTurnDiag)
+                        )
+                        val isQuotaExhausted = hasQuotaSignal &&
+                            (exitCode != 0 || (transcriptResponse.isNullOrBlank() && !hasExecutedSteps))
+
+                        if (isQuotaExhausted) {
+                            val nextAccount = AccountManager.getAccounts(context).firstOrNull {
+                                it.id.lowercase() !in attemptedAccountIds && it.tokenJson.isNotBlank()
+                            }
+                            if (nextAccount != null) {
+                                attemptedAccountIds.add(nextAccount.id.lowercase())
+                                addLog("Account", "Quota exhausted on active account. Auto-switching to ${nextAccount.email}...")
+                                TerminalSessionManager.appendAgyLine("[AGY] Quota exhausted. Auto-switching account to ${nextAccount.email}...")
+                                mutableActiveWorkingStatus.value = "Kuota habis, beralih ke ${nextAccount.email}..."
+
+                                val switched = AccountManager.switchAccount(context, nextAccount.id)
+                                if (switched) {
+                                    AgyModelsService.invalidateCache()
+                                    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                                    prefs.edit()
+                                        .remove(KEY_CLI_MODELS_FETCHED_AT)
+                                        .remove(KEY_CLI_MODELS_JSON)
+                                        .remove(KEY_SELECTED_MODEL_CLI_ID)
+                                        .apply()
+
+                                    OAuthManager.refreshTokenIfNeeded(context)
+                                    OAuthManager.syncCompanionStateFiles(context)
+                                    CloudCodeQuotaService.restartLocalLanguageServer(context)
+                                    stopCoreService(context)
+                                    delay(500)
+                                    startCoreService(context)
+                                    delay(800)
+                                    refreshAuthState(context)
+
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(
+                                            context,
+                                            "Kuota habis — otomatis pindah ke ${nextAccount.email}",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+
+                                    outputSb.clear()
+                                    rawTurnLogSb.clear()
+                                    activeCliConvId = null
+                                    currentTurn = 0
+                                    autoContinue = true
+                                    mutableActiveWorkingStatus.value = "Working (${nextAccount.email})"
+                                    mutableChatMessages.update { list ->
+                                        list.map { msg ->
+                                            if (msg.id == assistantMsgId) {
+                                                msg.copy(content = "", thinking = null, steps = emptyList())
+                                            } else msg
+                                        }
+                                    }
+                                    continue
+                                }
+                            } else {
+                                addLog("Account", "All configured Google accounts (${attemptedAccountIds.size}) exhausted quota.", isError = true)
+                            }
+                        }
 
                         if (exitCode != 0 || authRequired || hasTextOutput || !hasExecutedSteps) {
                             autoContinue = false
